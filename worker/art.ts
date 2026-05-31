@@ -7,7 +7,7 @@ import type { Env } from "./index";
 // page is beautiful before AI warms up. A nod to the Great American West.
 
 // Bump to invalidate every cached image (edge + R2) after a prompt/style change.
-export const ART_VERSION = "5";
+export const ART_VERSION = "6";
 
 // Curated source URLs (shared with scripts/fetch-art.mjs). The build step pulls
 // these into public/art + R2 automatically; the ingest endpoint can also pull
