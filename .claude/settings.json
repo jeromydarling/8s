@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f package.json ] && [ ! -d node_modules ]; then npm install --no-audit --no-fund >/tmp/8s-setup.log 2>&1 || true; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

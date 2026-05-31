@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "8s",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-05-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "ai": {
+    "binding": "AI"
+  },
+  "vars": {
+    "APP_NAME": "8 Seconds",
+    "APP_DOMAIN": "8s.rodeo"
+  }
+  // ---------------------------------------------------------------------------
+  // OPTIONAL BINDINGS (uncomment + fill IDs once provisioned — see README).
+  // The app runs fully on bundled seed data without them; add these to enable
+  // persistent lead capture, write-back, and uploaded-file storage.
+  //
+  // "d1_databases": [
+  //   { "binding": "DB", "database_name": "eight_seconds_db", "database_id": "<id>", "migrations_dir": "worker/db/migrations" }
+  // ],
+  // "kv_namespaces": [
+  //   { "binding": "LEADS", "id": "<id>" }
+  // ],
+  // "r2_buckets": [
+  //   { "binding": "UPLOADS", "bucket_name": "eight-seconds-uploads" },
+  //   { "binding": "MEDIA", "bucket_name": "eight-seconds-media" }
+  // ]
+}
