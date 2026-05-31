@@ -1,13 +1,22 @@
 import type { Context } from "hono";
 import type { Env } from "./index";
 
-// Watercolor art for the marketing site. Prefers Cloudflare AI (FLUX) for true
-// painterly imagery; always falls back to a crafted, layered watercolor SVG so
-// the page is beautiful even before AI is enabled. A nod to the Great American
-// West — muted, warm, never garish.
+// Vintage-American-watercolor art for the marketing site. Uses Cloudflare AI
+// (SDXL-Lightning, which honors a negative prompt so we can push hard away from
+// photorealism) and always falls back to a crafted layered watercolor SVG so the
+// page is beautiful before AI warms up. A nod to the Great American West.
+
+// Bump to invalidate every cached image (edge + R2) after a prompt/style change.
+const ART_VERSION = "3";
+
+const STYLE =
+  "vintage American watercolor illustration, hand painted on cotton rag paper, loose wet-on-wet washes, visible paper grain and paint bleed, soft feathered edges, muted dusty antique palette of ochre sienna sage and faded indigo, early 1900s western travel-poster feeling, painterly and flat, gentle and nostalgic";
+
+const NEGATIVE =
+  "photograph, photo, photorealistic, realistic, hyperrealistic, 3d render, cgi, octane, dslr, sharp focus, depth of field, hdr, glossy, plastic, lens flare, neon, text, words, letters, watermark, signature, frame, border";
 
 interface Preset {
-  prompt: string;
+  scene: string;
   palette: [string, string, string, string, string]; // sky-top, sky-mid, far, mid, near
   sun: string;
   silhouette?: "rider" | "horse" | "fence";
@@ -15,44 +24,52 @@ interface Preset {
 
 const PRESETS: Record<string, Preset> = {
   hero: {
-    prompt:
-      "loose watercolor painting of a wide open West Texas valley at golden hour, distant mesa, dry grass, soft washes, muted ochre and dusty sage, lots of negative space, no people, no text",
+    scene:
+      "a wide open West Texas valley at golden hour with a distant mesa, dry rolling grassland and an enormous soft sky, lots of open space, no people",
     palette: ["#f4e3c4", "#f0cfa0", "#d99c6a", "#b06b4a", "#7c4a35"],
     sun: "#fbe3b3",
   },
   rider: {
-    prompt:
-      "minimal watercolor of a lone barrel racer and horse silhouette against a warm dusk sky, soft bleeding edges, dusty rose and amber, no text",
+    scene:
+      "a young cowgirl barrel racer in a cowboy hat galloping her horse hard around a barrel in a dusty rodeo arena, the horse leaning into the turn with dirt kicking up, warm dusk light, energy and motion",
     palette: ["#f6e7cb", "#f2c98f", "#d98e63", "#9c5a44", "#5e3829"],
     sun: "#f9d79e",
     silhouette: "rider",
   },
   horse: {
-    prompt:
-      "watercolor study of a quarter horse grazing at sunrise, sage and cream tones, soft washes, no text",
+    scene:
+      "a single quarter horse standing in a ranch corral at sunrise, a weathered wooden fence behind, calm and proud",
     palette: ["#eef0df", "#e6d9b0", "#c9a878", "#8f7350", "#5b4a32"],
     sun: "#f3ead0",
     silhouette: "horse",
   },
   arena: {
-    prompt:
-      "watercolor of a small town rodeo arena at dusk, wooden fence, stadium lights warming up, prairie behind, muted nostalgic palette, no text",
+    scene:
+      "a small town rodeo arena at dusk with a wooden fence and grandstands, a lone horse and rider waiting in the alley, warm lights, prairie behind",
     palette: ["#e9dcc2", "#e0c190", "#c98f63", "#7e5640", "#3f2c20"],
     sun: "#f6d9a0",
     silhouette: "fence",
   },
   community: {
-    prompt:
-      "watercolor of families gathered at a country fairground in the evening, warm lantern light, sense of belonging, soft and tender, no text",
+    scene:
+      "rodeo families gathered at a country fairground in the evening with horses and trailers, warm lantern light, a sense of belonging and solidarity",
     palette: ["#f3e6cf", "#efc98f", "#dd9a62", "#a3654a", "#5d3a2b"],
     sun: "#fbe0ad",
   },
   trail: {
-    prompt:
-      "watercolor of an open prairie trail under a big sky with drifting clouds, sage green and warm sand, expansive, no text",
+    scene:
+      "an open prairie trail under a vast sky with drifting clouds, sage brush and warm sand, expansive and quiet",
     palette: ["#eef2e6", "#e7d6ad", "#cdb07f", "#9aa06a", "#5f6b42"],
     sun: "#f5eccf",
     silhouette: "fence",
+  },
+  // A clear, prominent rodeo horse for the marketing page.
+  barrelracer: {
+    scene:
+      "a cowgirl and her sorrel horse rounding the final barrel at a full run in a rodeo arena, mane and dirt flying, crowd softly blurred in the stands, golden late-afternoon light",
+    palette: ["#f6e6c6", "#eec487", "#d6905f", "#a85f41", "#5e3727"],
+    sun: "#f9d79e",
+    silhouette: "rider",
   },
 };
 
@@ -60,76 +77,63 @@ export async function generateArt(c: Context<{ Bindings: Env }>, slug: string): 
   const preset = PRESETS[slug] ?? PRESETS.hero;
   const cache = caches.default;
   const cacheKey = new Request(new URL(c.req.url).toString());
+  const key = `art/v${ART_VERSION}/${slug}.png`;
 
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
 
-  // 1) Curated override: a hand-picked image committed to public/art/<slug>.jpg
-  //    always wins, so art direction can be locked in without touching code.
+  const serve = (body: BodyInit, type = "image/png", maxAge = 31536000) => {
+    const resp = new Response(body, {
+      headers: { "Content-Type": type, "Cache-Control": `public, max-age=${maxAge}` },
+    });
+    c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
+    return resp;
+  };
+
+  // 1) Curated override committed to public/art/<slug>.jpg always wins.
   try {
     const origin = new URL(c.req.url).origin;
     const curated = await c.env.ASSETS.fetch(new Request(`${origin}/art/${slug}.jpg`));
     if (curated.ok && (curated.headers.get("content-type") ?? "").startsWith("image")) {
-      const resp = new Response(curated.body, {
-        headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" },
-      });
-      c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
-      return resp;
+      return serve(curated.body!, "image/jpeg", 86400);
     }
   } catch {
-    /* no curated asset — continue to R2 / AI / SVG */
+    /* none — continue */
   }
 
-  // Try R2 cache (persistent across deploys) then AI generation.
+  // 2) R2 persistent cache (survives deploys).
   if (c.env.MEDIA) {
-    const obj = await c.env.MEDIA.get(`art/${slug}.jpg`).catch(() => null);
-    if (obj) {
-      const resp = new Response(obj.body, {
-        headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable" },
-      });
-      c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
-      return resp;
-    }
+    const obj = await c.env.MEDIA.get(key).catch(() => null);
+    if (obj) return serve(obj.body, "image/png");
   }
 
+  // 3) Generate with Workers AI (SDXL-Lightning + negative prompt).
   if (c.env.AI) {
     try {
-      const out = (await c.env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
-        prompt: preset.prompt,
-        steps: 6,
-      })) as { image?: string };
-      if (out.image) {
-        const bytes = Uint8Array.from(atob(out.image), (ch) => ch.charCodeAt(0));
+      const stream = (await c.env.AI.run("@cf/bytedance/stable-diffusion-xl-lightning", {
+        prompt: `${preset.scene}. ${STYLE}`,
+        negative_prompt: NEGATIVE,
+        num_steps: 8,
+        guidance: 1.5,
+        width: 1280,
+        height: 768,
+      })) as ReadableStream;
+      const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+      if (bytes.byteLength > 0) {
         if (c.env.MEDIA) {
           c.executionCtx.waitUntil(
-            c.env.MEDIA.put(`art/${slug}.jpg`, bytes, {
-              httpMetadata: { contentType: "image/jpeg" },
-            }).then(() => undefined),
+            c.env.MEDIA.put(key, bytes, { httpMetadata: { contentType: "image/png" } }).then(() => undefined),
           );
         }
-        const resp = new Response(bytes, {
-          headers: {
-            "Content-Type": "image/jpeg",
-            "Cache-Control": "public, max-age=31536000, immutable",
-          },
-        });
-        c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
-        return resp;
+        return serve(bytes);
       }
     } catch (err) {
       console.error("AI art generation failed, serving SVG", err);
     }
   }
 
-  const svg = watercolorSvg(preset, slug);
-  const resp = new Response(svg, {
-    headers: {
-      "Content-Type": "image/svg+xml; charset=utf-8",
-      "Cache-Control": "public, max-age=86400",
-    },
-  });
-  c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
-  return resp;
+  // 4) Crafted watercolor SVG fallback.
+  return serve(watercolorSvg(preset, slug), "image/svg+xml; charset=utf-8", 86400);
 }
 
 function watercolorSvg(p: Preset, seed: string): string {
@@ -207,14 +211,16 @@ function renderSilhouette(kind: Preset["silhouette"], W: number, H: number): str
     return `<g opacity="0.6"><line x1="120" y1="${y - 70}" x2="${W - 120}" y2="${y - 70}" stroke="#2c1d12" stroke-width="3"/><line x1="120" y1="${y - 40}" x2="${W - 120}" y2="${y - 40}" stroke="#2c1d12" stroke-width="3"/>${posts}</g>`;
   }
   if (kind === "horse") {
-    return `<g transform="translate(${W * 0.62} ${y - 150}) scale(1.7)" fill="#241710" opacity="0.7">
-      <path d="M10 60 q5 -30 25 -34 q6 -14 18 -10 q-2 8 -8 10 q14 2 26 10 q10 -2 16 4 q-6 4 -14 2 q4 14 -2 30 l-6 0 q2 -14 -2 -24 q-10 6 -24 6 q2 12 -2 22 l-6 0 q-2 -12 0 -22 q-12 -2 -18 -10 q-2 14 -2 22 l-6 0 q-2 -16 0 -28 z"/>
+    return `<g transform="translate(${W * 0.6} ${y - 150}) scale(2.1)" fill="#241710" opacity="0.72">
+      <path d="M8 64 q3 -20 14 -26 q1 -7 -2 -12 q6 1 9 8 q7 -3 16 -2 q9 -10 14 -8 q-1 6 -6 9 q5 1 9 6 q6 -1 9 3 q-5 3 -10 1 q3 11 -1 25 l-6 0 q2 -12 -2 -20 q-8 5 -20 5 l-2 0 q1 10 -2 18 l-6 0 q-1 -10 1 -18 q-9 -3 -14 -10 q-3 13 -2 22 l-6 0 q-2 -15 1 -29 z"/>
     </g>`;
   }
   if (kind === "rider") {
-    return `<g transform="translate(${W * 0.58} ${y - 175}) scale(1.9)" fill="#1f140d" opacity="0.72">
-      <path d="M6 70 q4 -26 22 -30 q4 -16 16 -16 q8 0 8 8 q0 6 -6 8 q10 2 18 10 q9 -3 15 3 q-5 4 -12 3 q4 12 0 26 l-5 0 q2 -12 -1 -21 q-9 5 -21 5 q1 11 -2 20 l-6 0 q-1 -11 1 -20 q-11 -2 -17 -9 q-2 12 -1 20 l-6 0 q-2 -14 -2 -25 z"/>
-      <circle cx="40" cy="20" r="5"/><path d="M33 18 q7 -8 14 0 z"/>
+    // galloping horse + rider, leaning into a turn
+    return `<g transform="translate(${W * 0.52} ${y - 200}) scale(2.3)" fill="#1f140d" opacity="0.75">
+      <path d="M2 70 q4 -10 12 -12 q-4 -8 -2 -16 q5 4 7 11 q8 -4 18 -3 q10 -12 17 -10 q-1 6 -7 10 q6 0 11 5 q7 -2 11 3 q-5 3 -11 2 q4 9 12 12 q-2 4 -9 2 q-6 -2 -10 -7 q1 9 -3 17 l-6 0 q3 -10 -1 -18 q-9 4 -21 3 q5 7 4 16 l-6 1 q0 -9 -5 -15 q-6 6 -7 15 l-6 0 q0 -11 7 -18 q-9 -2 -13 -9 z"/>
+      <path d="M28 36 q3 -10 11 -11 q4 -10 12 -8 q-2 6 -7 8 q5 3 6 11 q-5 -3 -10 -2 q-4 4 -10 4 z"/>
+      <circle cx="46" cy="26" r="4.5"/>
     </g>`;
   }
   return "";

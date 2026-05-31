@@ -28,4 +28,5 @@ export const api = {
     }),
 };
 
-export const artUrl = (slug: string) => `/api/art/${slug}`;
+// Bump alongside ART_VERSION in worker/art.ts to bust cached imagery.
+export const artUrl = (slug: string) => `/api/art/${slug}?v=3`;

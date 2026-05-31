@@ -361,14 +361,24 @@ function FeaturesSection({ onDemo }: { onDemo: () => void }) {
 function WomenSection() {
   return (
     <section className="relative overflow-hidden bg-ink py-24 text-bone md:py-32">
-      <div
-        className="absolute inset-0 bg-cover bg-center opacity-30"
-        style={{ backgroundImage: `url(${artUrl("rider")})` }}
-      />
-      <div className="absolute inset-0 bg-gradient-to-r from-ink via-ink/80 to-transparent" />
       <Grain dark />
-      <div className="relative mx-auto max-w-6xl px-5">
-        <div className="max-w-2xl">
+      <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 md:grid-cols-2">
+        <Reveal y={40} className="order-1">
+          <figure className="relative">
+            <div className="deckle overflow-hidden shadow-lift">
+              <img
+                src={artUrl("barrelracer")}
+                alt="A vintage watercolor of a cowgirl and her horse rounding the final barrel at a full run in a rodeo arena"
+                className="aspect-[5/4] w-full object-cover"
+                loading="lazy"
+              />
+            </div>
+            <figcaption className="absolute -bottom-4 right-4 rotate-[1.5deg] rounded-full bg-gold px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-ink shadow-lg">
+              Eight seconds of try
+            </figcaption>
+          </figure>
+        </Reveal>
+        <div className="order-2 max-w-xl">
           <Reveal><span className="eyebrow text-gold">Women and girls at the center</span></Reveal>
           <Reveal delay={0.1}>
             <h2 className="mt-4 display-lg font-bold leading-[0.98]">
