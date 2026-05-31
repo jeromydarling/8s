@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { unlockDemo } from "../lib/demo";
 import { Button, Rowel } from "../components/ui";
@@ -8,7 +7,9 @@ import { Button, Rowel } from "../components/ui";
 const ROLES = ["Rodeo parent", "Contestant / rider", "Coach / trainer", "Association / secretary", "Western brand"];
 
 export function DemoGate({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const navigate = useNavigate();
+  const enter = () => {
+    window.location.href = "/app";
+  };
   const [form, setForm] = useState({ name: "", email: "", role: ROLES[0], state: "", disciplines: "" });
   const [status, setStatus] = useState<"idle" | "sending" | "error">("idle");
   const [err, setErr] = useState("");
@@ -23,12 +24,12 @@ export function DemoGate({ open, onClose }: { open: boolean; onClose: () => void
     try {
       await api.submitLead(form);
       unlockDemo(form.name);
-      navigate("/app");
+      enter();
     } catch (e2) {
       // Even if persistence hiccups, let them into the demo — never block.
       unlockDemo(form.name);
       setErr(String((e2 as Error).message ?? e2));
-      setTimeout(() => navigate("/app"), 600);
+      setTimeout(enter, 600);
     }
   }
 

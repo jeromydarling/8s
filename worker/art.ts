@@ -64,6 +64,22 @@ export async function generateArt(c: Context<{ Bindings: Env }>, slug: string): 
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
 
+  // 1) Curated override: a hand-picked image committed to public/art/<slug>.jpg
+  //    always wins, so art direction can be locked in without touching code.
+  try {
+    const origin = new URL(c.req.url).origin;
+    const curated = await c.env.ASSETS.fetch(new Request(`${origin}/art/${slug}.jpg`));
+    if (curated.ok && (curated.headers.get("content-type") ?? "").startsWith("image")) {
+      const resp = new Response(curated.body, {
+        headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" },
+      });
+      c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
+      return resp;
+    }
+  } catch {
+    /* no curated asset — continue to R2 / AI / SVG */
+  }
+
   // Try R2 cache (persistent across deploys) then AI generation.
   if (c.env.MEDIA) {
     const obj = await c.env.MEDIA.get(`art/${slug}.jpg`).catch(() => null);
