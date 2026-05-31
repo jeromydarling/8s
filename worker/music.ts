@@ -50,6 +50,7 @@ export async function music(c: Context<{ Bindings: Env }>): Promise<Response> {
 
   // 3) Generate with Workers AI, store in R2.
   if (c.env.AI) {
+    const debug = c.req.query("debug") === "1";
     try {
       const out = (await c.env.AI.run("minimax/music-2.6", {
         is_instrumental: true,
@@ -67,6 +68,15 @@ export async function music(c: Context<{ Bindings: Env }>): Promise<Response> {
         bytes = Uint8Array.from(atob(out.audio), (ch) => ch.charCodeAt(0));
       }
 
+      if (debug) {
+        return c.json({
+          ok: !!bytes,
+          bytes: bytes?.byteLength ?? 0,
+          audioField: out?.audio ? out.audio.slice(0, 80) : null,
+          keys: Object.keys(out ?? {}),
+        });
+      }
+
       if (bytes && bytes.byteLength > 1024) {
         if (c.env.MEDIA) {
           c.executionCtx.waitUntil(
@@ -76,6 +86,7 @@ export async function music(c: Context<{ Bindings: Env }>): Promise<Response> {
         return serve(bytes);
       }
     } catch (err) {
+      if (debug) return c.json({ ok: false, error: String(err) }, 500);
       console.error("music generation failed", err);
     }
   }
