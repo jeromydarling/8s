@@ -4,7 +4,6 @@ import { demoData } from "../shared/seed";
 import type { ImportResult, Lead } from "../shared/types";
 import { runImport } from "./import";
 import { generateArt, ingestArt } from "./art";
-import { music, musicStatus } from "./music";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -124,10 +123,6 @@ app.get("/api/art/:slug", async (c) => {
 // One-time curated-art ingest (token-guarded). The Worker fetches the source
 // URL(s) and stores them in R2 as the authoritative art.
 app.get("/api/admin/ingest-art", (c) => ingestArt(c));
-
-// Optional background music for the demo video (R2 or committed asset).
-app.get("/api/music/status", (c) => musicStatus(c));
-app.get("/api/music", (c) => music(c));
 
 // ---- SPA fallback: hand everything else to static assets -------------------
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));

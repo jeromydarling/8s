@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/fetch-art.mjs && tsc -b && vite build",
+    "build": "node scripts/fetch-art.mjs && node scripts/make-music.mjs && node scripts/render-video.mjs && tsc -b && vite build",
+    "render": "node scripts/make-music.mjs && node scripts/render-video.mjs",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
     "lint": "tsc -b --noEmit",
@@ -26,6 +27,8 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.0.12",
     "@cloudflare/workers-types": "^4.20250101.0",
+    "@remotion/bundler": "^4.0.470",
+    "@remotion/renderer": "^4.0.470",
     "@tailwindcss/vite": "^4.0.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

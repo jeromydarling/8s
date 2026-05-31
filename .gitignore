@@ -11,3 +11,7 @@ dist
 
 # build-time fetched curated art (regenerated each build from art-manifest.json)
 public/art/
+
+# generated media (regenerated each build)
+public/audio/tour-music.wav
+public/video/tour.mp4
