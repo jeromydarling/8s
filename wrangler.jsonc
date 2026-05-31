@@ -17,18 +17,20 @@
   "vars": {
     "APP_NAME": "8 Seconds",
     "APP_DOMAIN": "8s.rodeo"
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "eight_seconds_db",
+      "database_id": "2ed05721-0fdc-42fa-8629-b7f2a3f3ac2d",
+      "migrations_dir": "worker/db/migrations"
+    }
+  ]
   // ---------------------------------------------------------------------------
-  // OPTIONAL BINDINGS (uncomment + fill IDs once provisioned — see README).
-  // The app runs fully on bundled seed data without them; add these to enable
-  // persistent lead capture, write-back, and uploaded-file storage.
+  // R2 buckets (enable R2 on the account first, then create the buckets and
+  // uncomment). art.ts persists generated watercolors to MEDIA; until then the
+  // edge cache (caches.default) handles art caching at runtime.
   //
-  // "d1_databases": [
-  //   { "binding": "DB", "database_name": "eight_seconds_db", "database_id": "<id>", "migrations_dir": "worker/db/migrations" }
-  // ],
-  // "kv_namespaces": [
-  //   { "binding": "LEADS", "id": "<id>" }
-  // ],
   // "r2_buckets": [
   //   { "binding": "UPLOADS", "bucket_name": "eight-seconds-uploads" },
   //   { "binding": "MEDIA", "bucket_name": "eight-seconds-media" }
