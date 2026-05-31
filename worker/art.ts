@@ -9,13 +9,11 @@ import type { Env } from "./index";
 // Bump to invalidate every cached image (edge + R2) after a prompt/style change.
 export const ART_VERSION = "5";
 
-// Curated images to pull into R2 via /api/admin/ingest-art. The Worker has
-// egress (the build container does not), so it fetches these URLs itself.
-// Values are temporary presigned export URLs — only needed once per ingest.
-export const ART_MANIFEST: Record<string, string> = {
-  barrelracer:
-    "https://export-download.canva.com/QDnYI/DAHLPXQDnYI/-1/0/0001-3216075075017510259.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAQYCGKMUH5AO7UJ26%2F20260530%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260530T205639Z&X-Amz-Expires=66452&X-Amz-Signature=53304f948291f2841934dc8fe34d36d6640aad8acd916e8a513afa83aab45723&X-Amz-SignedHeaders=host%3Bx-amz-expected-bucket-owner&response-expires=Sun%2C%2031%20May%202026%2015%3A24%3A11%20GMT",
-};
+// Curated source URLs (shared with scripts/fetch-art.mjs). The build step pulls
+// these into public/art + R2 automatically; the ingest endpoint can also pull
+// them on demand. The Worker/CI have egress; the local sandbox does not.
+import manifest from "../art-manifest.json";
+export const ART_MANIFEST: Record<string, string> = manifest;
 
 const STYLE =
   "vintage American watercolor illustration, hand painted on cotton rag paper, loose wet-on-wet washes, visible paper grain and paint bleed, soft feathered edges, muted dusty antique palette of ochre sienna sage and faded indigo, early 1900s western travel-poster feeling, painterly and flat, gentle and nostalgic";

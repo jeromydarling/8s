@@ -8,3 +8,6 @@ dist
 
 # build info
 *.tsbuildinfo
+
+# build-time fetched curated art (regenerated each build from art-manifest.json)
+public/art/
