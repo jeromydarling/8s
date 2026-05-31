@@ -77,6 +77,8 @@ export interface RodeoEvent {
   feePerEvent: number;
   status: "open" | "closing-soon" | "drawn" | "closed";
   added: boolean; // is this family entered / watching
+  lat: number;
+  lng: number;
 }
 
 export interface RunLog {
@@ -144,6 +146,8 @@ export interface Arena {
   signatureGoal: number;
   economicImpact: number; // annual, USD
   supporters: number;
+  lat: number;
+  lng: number;
 }
 
 export interface BudgetCategory {

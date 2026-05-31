@@ -4,6 +4,7 @@ import type { ImportResult } from "@shared/types";
 import { useDemo } from "../lib/demo";
 import { api } from "../lib/api";
 import { cn, Rowel, Tag } from "../components/ui";
+import { LazyRodeoMap } from "../components/LazyRodeoMap";
 import { Avatar, Card, EmptyHint, ProgressBar, ScreenHeader, Stagger, StaggerItem, StatusDot } from "./widgets";
 
 /* ================= MORE ================= */
@@ -121,15 +122,44 @@ const arenaTone = { safe: "Safe", watch: "Watch", threatened: "Threatened", save
 export function GatepostScreen() {
   const { data } = useDemo();
   const [signed, setSigned] = useState<Record<string, boolean>>({});
+  const [selected, setSelected] = useState<string | null>(null);
   if (!data) return null;
 
   return (
     <div>
       <ScreenHeader eyebrow="The Gatepost" title="Stand the ground" />
-      <p className="mb-5 font-serif text-sm leading-relaxed text-ink/60">
+      <p className="mb-4 font-serif text-sm leading-relaxed text-ink/60">
         Arenas are community anchors. When development or a noise complaint threatens one, families organize here
         — together.
       </p>
+
+      <LazyRodeoMap
+        className="mb-4 h-60 border border-saddle/20"
+        selectedId={selected}
+        onSelect={(id) => setSelected(id)}
+        pins={data.arenas.map((a) => ({
+          id: a.id,
+          lat: a.lat,
+          lng: a.lng,
+          title: a.name,
+          subtitle: `${a.city}, ${a.state}`,
+          tone: (a.status === "threatened" ? "rust" : a.status === "saved" ? "turq" : a.status === "watch" ? "gold" : "sage") as
+            | "rust"
+            | "turq"
+            | "gold"
+            | "sage",
+          active: a.id === selected,
+        }))}
+      />
+      <div className="mb-4 flex flex-wrap gap-3 text-[10px] font-semibold text-ink/55">
+        {[["rust", "Threatened"], ["gold", "Watch"], ["sage", "Safe"], ["turq", "Saved"]].map(([t, l]) => (
+          <span key={l} className="flex items-center gap-1.5">
+            <span className={cn("h-2.5 w-2.5 rounded-full", t === "rust" ? "bg-rust" : t === "gold" ? "bg-gold" : t === "sage" ? "bg-sage" : "bg-turq")} />
+            {l}
+          </span>
+        ))}
+      </div>
+
       <Stagger>
         {data.arenas.map((a) => {
           const isSigned = signed[a.id];

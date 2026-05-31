@@ -152,6 +152,8 @@ export const demoData: DemoDataset = {
       feePerEvent: 35,
       status: "closing-soon",
       added: true,
+      lat: 32.2207,
+      lng: -98.2023,
     },
     {
       id: "e2",
@@ -169,6 +171,8 @@ export const demoData: DemoDataset = {
       feePerEvent: 65,
       status: "closing-soon",
       added: true,
+      lat: 32.7510,
+      lng: -97.3620,
     },
     {
       id: "e3",
@@ -186,6 +190,8 @@ export const demoData: DemoDataset = {
       feePerEvent: 40,
       status: "open",
       added: true,
+      lat: 31.7832,
+      lng: -97.5803,
     },
     {
       id: "e4",
@@ -203,6 +209,8 @@ export const demoData: DemoDataset = {
       feePerEvent: 50,
       status: "open",
       added: false,
+      lat: 33.9343,
+      lng: -97.1147,
     },
     {
       id: "e5",
@@ -220,6 +228,8 @@ export const demoData: DemoDataset = {
       feePerEvent: 55,
       status: "open",
       added: false,
+      lat: 35.8789,
+      lng: -97.4253,
     },
     {
       id: "e6",
@@ -237,6 +247,8 @@ export const demoData: DemoDataset = {
       feePerEvent: 35,
       status: "drawn",
       added: true,
+      lat: 32.2343,
+      lng: -97.7547,
     },
   ],
 
@@ -433,6 +445,8 @@ export const demoData: DemoDataset = {
       signatureGoal: 0,
       economicImpact: 1_900_000,
       supporters: 312,
+      lat: 32.2207,
+      lng: -98.2023,
     },
     {
       id: "a2",
@@ -448,6 +462,8 @@ export const demoData: DemoDataset = {
       signatureGoal: 4000,
       economicImpact: 850_000,
       supporters: 1180,
+      lat: 36.1398,
+      lng: -96.1097,
     },
     {
       id: "a3",
@@ -463,6 +479,8 @@ export const demoData: DemoDataset = {
       signatureGoal: 5000,
       economicImpact: 3_400_000,
       supporters: 920,
+      lat: 43.4799,
+      lng: -110.7624,
     },
     {
       id: "a4",
@@ -478,6 +496,8 @@ export const demoData: DemoDataset = {
       signatureGoal: 3000,
       economicImpact: 420_000,
       supporters: 230,
+      lat: 40.4167,
+      lng: -86.8753,
     },
   ],
 

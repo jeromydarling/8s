@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { Discipline } from "@shared/types";
+import type { Discipline, RodeoEvent } from "@shared/types";
 import { useDemo, demoName } from "../lib/demo";
 import { cn, Tag } from "../components/ui";
+import { LazyRodeoMap } from "../components/LazyRodeoMap";
 import {
   Avatar,
   Card,
@@ -102,10 +103,24 @@ export function TodayScreen() {
 /* ================= THE DRAW ================= */
 const FILTERS: Array<"All" | Discipline> = ["All", "Barrel Racing", "Breakaway Roping", "Tie-Down Roping", "Team Roping", "Goat Tying"];
 
+const HOME_BASE = { lat: 32.2207, lng: -98.2023, label: "Stephenville, TX" };
+
+function milesFrom(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 3958.8;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s)));
+}
+
 export function DrawScreen() {
   const { data } = useDemo();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
   const [added, setAdded] = useState<Record<string, boolean>>({});
+  const [view, setView] = useState<"list" | "map" | "plan">("list");
+  const [selected, setSelected] = useState<string | null>(null);
   if (!data) return null;
 
   const events = data.events
@@ -113,24 +128,61 @@ export function DrawScreen() {
     .slice()
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
 
+  const planEvents = events.filter((e) => added[e.id] ?? e.added);
+  const mapEvents = view === "plan" ? planEvents : events;
+  const sel = events.find((e) => e.id === selected);
+
   return (
     <div>
       <ScreenHeader eyebrow="The Draw" title="Every event, one feed" />
-      <div className="no-scrollbar -mx-4 mb-4 flex gap-2 overflow-x-auto px-4">
-        {FILTERS.map((f) => (
+
+      <div className="mb-3 flex gap-1 rounded-full bg-ink/6 p-1 text-xs font-semibold">
+        {([
+          ["list", "List"],
+          ["map", "Map"],
+          ["plan", "Plan trip"],
+        ] as const).map(([v, label]) => (
           <button
-            key={f}
-            onClick={() => setFilter(f)}
+            key={v}
+            onClick={() => setView(v)}
             className={cn(
-              "whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition",
-              filter === f ? "bg-rust text-bone" : "bg-ink/6 text-ink/60 hover:bg-ink/10",
+              "flex-1 rounded-full py-1.5 capitalize transition",
+              view === v ? "bg-bone text-ink shadow-card" : "text-ink/50",
             )}
           >
-            {f === "All" ? "All" : f.replace(" Racing", "").replace(" Roping", "")}
+            {label}
           </button>
         ))}
       </div>
 
+      {view !== "plan" && (
+        <div className="no-scrollbar -mx-4 mb-4 flex gap-2 overflow-x-auto px-4">
+          {FILTERS.map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={cn(
+                "whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition",
+                filter === f ? "bg-rust text-bone" : "bg-ink/6 text-ink/60 hover:bg-ink/10",
+              )}
+            >
+              {f === "All" ? "All" : f.replace(" Racing", "").replace(" Roping", "")}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(view === "map" || view === "plan") && (
+        <MapPanel
+          view={view}
+          events={mapEvents}
+          selected={selected}
+          onSelect={(id) => setSelected(id)}
+          sel={sel}
+        />
+      )}
+
+      {view === "list" && (
       <Stagger>
         {events.map((e) => {
           const isAdded = added[e.id] ?? e.added;
@@ -177,6 +229,82 @@ export function DrawScreen() {
           );
         })}
       </Stagger>
+      )}
+    </div>
+  );
+}
+
+function MapPanel({
+  view,
+  events,
+  selected,
+  onSelect,
+  sel,
+}: {
+  view: "map" | "plan";
+  events: RodeoEvent[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+  sel: RodeoEvent | undefined;
+}) {
+  const pins = events.map((e) => ({
+    id: e.id,
+    lat: e.lat,
+    lng: e.lng,
+    title: e.name,
+    subtitle: `${e.city}, ${e.state}`,
+    tone: (e.status === "closing-soon" ? "rust" : e.status === "drawn" ? "turq" : "sage") as
+      | "rust"
+      | "turq"
+      | "sage",
+    active: e.id === selected,
+  }));
+
+  const totalMiles = view === "plan"
+    ? events.reduce((sum, e) => sum + milesFrom(HOME_BASE, e), 0)
+    : 0;
+
+  return (
+    <div className="mb-4">
+      {view === "plan" && (
+        <Card className="mb-3 bg-leather text-bone">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-gold">Trip from {HOME_BASE.label}</div>
+              <div className="font-display text-lg font-bold">{events.length} rodeos this season</div>
+            </div>
+            <div className="text-right">
+              <div className="font-display text-2xl font-bold text-gold">{totalMiles.toLocaleString()}</div>
+              <div className="text-[9px] uppercase tracking-widest text-bone/55">round-trip miles</div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <LazyRodeoMap
+        pins={pins}
+        selectedId={selected}
+        onSelect={onSelect}
+        routeOrigin={view === "plan" ? HOME_BASE : null}
+        showRoute={view === "plan"}
+        className="h-72 border border-saddle/20"
+      />
+
+      {sel && (
+        <Card className="mt-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-saddle/70">{sel.association}</span>
+              <h3 className="font-display text-lg font-bold leading-tight text-ink">{sel.name}</h3>
+              <div className="text-xs text-ink/50">{sel.venue} · {sel.city}, {sel.state}</div>
+            </div>
+            <div className="text-right">
+              <div className="font-display text-lg font-bold text-rust">{fmtDate(sel.startDate)}</div>
+              <div className="text-[10px] text-ink/45">{milesFrom(HOME_BASE, sel).toLocaleString()} mi</div>
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

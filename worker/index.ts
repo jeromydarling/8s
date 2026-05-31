@@ -15,6 +15,8 @@ export interface Env {
   APP_NAME: string;
   APP_DOMAIN: string;
   ART_INGEST_TOKEN?: string;
+  MAPBOX_TOKEN?: string; // public pk.* token for Mapbox GL
+  PERPLEXITY_API_KEY?: string; // secret, server-side seeding only
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -32,6 +34,11 @@ app.get("/api/health", (c) =>
       media: !!c.env.MEDIA,
     },
   }),
+);
+
+// ---- Public client config (Mapbox token etc.) -----------------------------
+app.get("/api/config", (c) =>
+  c.json({ mapboxToken: c.env.MAPBOX_TOKEN ?? null, mapsEnabled: !!c.env.MAPBOX_TOKEN }),
 );
 
 // ---- Fully seeded demo dataset ---------------------------------------------

@@ -1,7 +1,8 @@
 import { motion, useScroll, useTransform } from "framer-motion";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { artUrl } from "../lib/api";
+import { api, artUrl } from "../lib/api";
 import { Button, Counter, Grain, Reveal, Rowel, Tag, Wordmark } from "../components/ui";
+import { LazyRodeoMap } from "../components/LazyRodeoMap";
 import { DemoGate } from "./DemoGate";
 
 const DemoVideoModal = lazy(() => import("./DemoVideoModal"));
@@ -29,6 +30,7 @@ export default function Home() {
       <GapSection />
       <FeaturesSection onDemo={openGate} />
       <WomenSection />
+      <MapSection onDemo={openGate} />
       <ImportSection />
       <CommunitySection />
       <PricingSection onDemo={openGate} />
@@ -394,6 +396,71 @@ function WomenSection() {
             ))}
           </div>
         </div>
+      </div>
+    </section>
+  );
+}
+
+/* ============================ MAP TEASER ============================ */
+function MapSection({ onDemo }: { onDemo: () => void }) {
+  const [pins, setPins] = useState<
+    Array<{ id: string; lat: number; lng: number; title: string; subtitle: string; tone: "rust" | "sage" | "turq" }>
+  >([]);
+  const [active, setActive] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .demo()
+      .then((d) => {
+        if (!alive) return;
+        setPins(
+          d.events.map((e) => ({
+            id: e.id,
+            lat: e.lat,
+            lng: e.lng,
+            title: e.name,
+            subtitle: `${e.city}, ${e.state}`,
+            tone: e.status === "closing-soon" ? "rust" : e.status === "drawn" ? "turq" : "sage",
+          })),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return (
+    <section className="relative mx-auto max-w-6xl px-5 py-24 md:py-28">
+      <div className="grid items-center gap-12 md:grid-cols-2">
+        <Reveal>
+          <Tag tone="turq">The Draw · discover & plan</Tag>
+          <h2 className="mt-3 display-lg font-bold leading-[0.98] text-ink">Every rodeo on one map.</h2>
+          <p className="mt-5 font-serif text-lg leading-relaxed text-ink/70">
+            Stop hunting across a dozen association sites and Facebook groups. See every youth rodeo near you,
+            filter by discipline and date, and plan the whole weekend — route, drive time, and which events each
+            kid is entered in — before you ever hitch the trailer.
+          </p>
+          <ul className="mt-6 space-y-2 text-sm text-ink/70">
+            {["Find events by distance, discipline, and association", "Plan a season circuit with drive distances", "Tap a pin for entry deadlines and the draw"].map((x) => (
+              <li key={x} className="flex items-center gap-2">
+                <span className="grid h-5 w-5 place-items-center rounded-full bg-turq/15 text-turq">✓</span>
+                {x}
+              </li>
+            ))}
+          </ul>
+          <Button onClick={onDemo} className="mt-7">Explore the map in the demo →</Button>
+        </Reveal>
+        <Reveal delay={0.15}>
+          <div className="overflow-hidden rounded-2xl border border-saddle/20 shadow-lift">
+            {pins.length > 0 ? (
+              <LazyRodeoMap pins={pins} selectedId={active} onSelect={setActive} className="h-[420px]" />
+            ) : (
+              <div className="grid h-[420px] place-items-center bg-paper text-sm text-ink/40">Loading map…</div>
+            )}
+          </div>
+        </Reveal>
       </div>
     </section>
   );
