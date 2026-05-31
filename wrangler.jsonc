@@ -16,7 +16,8 @@
   },
   "vars": {
     "APP_NAME": "8 Seconds",
-    "APP_DOMAIN": "8s.rodeo"
+    "APP_DOMAIN": "8s.rodeo",
+    "ART_INGEST_TOKEN": "rowel-8s-ingest-a7f3c9e1"
   },
   "d1_databases": [
     {

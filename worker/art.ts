@@ -7,7 +7,15 @@ import type { Env } from "./index";
 // page is beautiful before AI warms up. A nod to the Great American West.
 
 // Bump to invalidate every cached image (edge + R2) after a prompt/style change.
-const ART_VERSION = "4";
+export const ART_VERSION = "5";
+
+// Curated images to pull into R2 via /api/admin/ingest-art. The Worker has
+// egress (the build container does not), so it fetches these URLs itself.
+// Values are temporary presigned export URLs — only needed once per ingest.
+export const ART_MANIFEST: Record<string, string> = {
+  barrelracer:
+    "https://export-download.canva.com/QDnYI/DAHLPXQDnYI/-1/0/0001-3216075075017510259.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAQYCGKMUH5AO7UJ26%2F20260530%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260530T205639Z&X-Amz-Expires=66452&X-Amz-Signature=53304f948291f2841934dc8fe34d36d6640aad8acd916e8a513afa83aab45723&X-Amz-SignedHeaders=host%3Bx-amz-expected-bucket-owner&response-expires=Sun%2C%2031%20May%202026%2015%3A24%3A11%20GMT",
+};
 
 const STYLE =
   "vintage American watercolor illustration, hand painted on cotton rag paper, loose wet-on-wet washes, visible paper grain and paint bleed, soft feathered edges, muted dusty antique palette of ochre sienna sage and faded indigo, early 1900s western travel-poster feeling, painterly and flat, gentle and nostalgic";
@@ -103,10 +111,10 @@ export async function generateArt(c: Context<{ Bindings: Env }>, slug: string): 
     /* none — continue */
   }
 
-  // 2) R2 persistent cache (survives deploys).
+  // 2) R2 persistent cache (survives deploys) — includes curated ingested art.
   if (c.env.MEDIA) {
     const obj = await c.env.MEDIA.get(key).catch(() => null);
-    if (obj) return serve(obj.body, "image/png");
+    if (obj) return serve(obj.body, obj.httpMetadata?.contentType ?? "image/png");
   }
 
   // 3) Generate with Workers AI (SDXL-Lightning + negative prompt).
@@ -235,4 +243,46 @@ function hash(str: string): number {
     h = Math.imul(h, 16777619);
   }
   return Math.abs(h);
+}
+
+// One-time ingest: the Worker (which has internet egress) pulls curated images
+// into R2 so they become the authoritative art. Call once per source URL:
+//   /api/admin/ingest-art?token=...            → ingests everything in ART_MANIFEST
+//   /api/admin/ingest-art?token=...&slug=hero&src=<url>  → ingests a single URL
+export async function ingestArt(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const token = c.req.query("token");
+  if (!c.env.ART_INGEST_TOKEN || token !== c.env.ART_INGEST_TOKEN) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  if (!c.env.MEDIA) return c.json({ error: "R2 MEDIA binding required" }, 400);
+
+  const slug = c.req.query("slug");
+  const src = c.req.query("src");
+  const jobs: Array<[string, string]> =
+    slug && src ? [[slug, src]] : Object.entries(ART_MANIFEST);
+
+  const origin = new URL(c.req.url).origin;
+  const cache = caches.default;
+  const report: Array<Record<string, unknown>> = [];
+
+  for (const [s, url] of jobs) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) {
+        report.push({ slug: s, ok: false, status: r.status });
+        continue;
+      }
+      const type = r.headers.get("content-type") ?? "image/jpeg";
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      await c.env.MEDIA.put(`art/v${ART_VERSION}/${s}.png`, bytes, {
+        httpMetadata: { contentType: type },
+      });
+      // Drop any edge-cached AI image for this versioned art URL.
+      await cache.delete(new Request(`${origin}/api/art/${s}?v=${ART_VERSION}`));
+      report.push({ slug: s, ok: true, bytes: bytes.byteLength, type });
+    } catch (err) {
+      report.push({ slug: s, ok: false, error: String(err) });
+    }
+  }
+  return c.json({ version: ART_VERSION, ingested: report });
 }
