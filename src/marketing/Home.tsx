@@ -1,8 +1,10 @@
 import { motion, useScroll, useTransform } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { artUrl } from "../lib/api";
 import { Button, Counter, Grain, Reveal, Rowel, Tag, Wordmark } from "../components/ui";
 import { DemoGate } from "./DemoGate";
+
+const DemoVideoModal = lazy(() => import("./DemoVideoModal"));
 import {
   BucklePreview,
   DrawPreview,
@@ -14,12 +16,14 @@ import {
 
 export default function Home() {
   const [gate, setGate] = useState(false);
+  const [video, setVideo] = useState(false);
   const openGate = () => setGate(true);
+  const openVideo = () => setVideo(true);
 
   return (
     <div className="relative bg-bone">
       <Nav onDemo={openGate} />
-      <Hero onDemo={openGate} />
+      <Hero onDemo={openGate} onWatch={openVideo} />
       <StatStrip />
       <WhySection />
       <GapSection />
@@ -31,6 +35,11 @@ export default function Home() {
       <DemoBand onDemo={openGate} />
       <Footer />
       <DemoGate open={gate} onClose={() => setGate(false)} />
+      {video && (
+        <Suspense fallback={null}>
+          <DemoVideoModal open={video} onClose={() => setVideo(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -64,7 +73,7 @@ function Nav({ onDemo }: { onDemo: () => void }) {
 }
 
 /* ============================ HERO ============================ */
-function Hero({ onDemo }: { onDemo: () => void }) {
+function Hero({ onDemo, onWatch }: { onDemo: () => void; onWatch: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
   const yBack = useTransform(scrollYProgress, [0, 1], ["0%", "26%"]);
@@ -106,12 +115,15 @@ function Hero({ onDemo }: { onDemo: () => void }) {
             <Button size="lg" onClick={onDemo} className="[animation:pulse-ring_2.4s_infinite]">
               See the live demo
             </Button>
-            <a
-              href="#features"
-              className="font-display text-sm font-semibold uppercase tracking-wider text-bone/80 underline-offset-8 transition hover:text-gold hover:underline"
+            <button
+              onClick={onWatch}
+              className="group inline-flex items-center gap-3 rounded-full border border-bone/30 px-6 py-4 font-display text-sm font-semibold uppercase tracking-wider text-bone transition hover:border-gold hover:bg-bone/5"
             >
-              How it works ↓
-            </a>
+              <span className="grid h-7 w-7 place-items-center rounded-full bg-gold text-ink transition group-hover:scale-110">
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 translate-x-px" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+              </span>
+              Watch the tour
+            </button>
           </div>
         </Reveal>
         <Reveal delay={0.4}>
