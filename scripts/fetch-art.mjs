@@ -10,7 +10,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import manifest from "../art-manifest.json" with { type: "json" };
 
-const ART_VERSION = "6"; // keep in sync with worker/art.ts
+const ART_VERSION = "7"; // keep in sync with worker/art.ts
 const pexec = promisify(execFile);
 const dir = new URL("../public/art/", import.meta.url);
 

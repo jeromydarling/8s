@@ -68,7 +68,6 @@ function Hero({ onDemo }: { onDemo: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
   const yBack = useTransform(scrollYProgress, [0, 1], ["0%", "26%"]);
-  const yArt = useTransform(scrollYProgress, [0, 1], ["0%", "12%"]);
   const fade = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
 
   return (
@@ -80,15 +79,6 @@ function Hero({ onDemo }: { onDemo: () => void }) {
       />
       <div className="absolute inset-0 bg-gradient-to-b from-ink/55 via-transparent to-leather" />
       <div className="absolute inset-0 bg-gradient-to-r from-ink/40 to-transparent" />
-
-      {/* drifting clouds */}
-      <motion.div style={{ y: yArt }} className="pointer-events-none absolute inset-0">
-        <div className="absolute left-0 top-[22%] flex w-[200%] gap-40 opacity-30 animate-drift">
-          {[0, 1].map((k) => (
-            <CloudRow key={k} />
-          ))}
-        </div>
-      </motion.div>
 
       <Grain dark />
 
@@ -141,19 +131,6 @@ function Hero({ onDemo }: { onDemo: () => void }) {
       {/* 8-second timer motif */}
       <EightTimer />
     </section>
-  );
-}
-
-function CloudRow() {
-  return (
-    <svg viewBox="0 0 600 80" className="h-20 w-[50%] shrink-0 text-bone">
-      <g fill="currentColor">
-        <ellipse cx="120" cy="50" rx="90" ry="20" />
-        <ellipse cx="200" cy="42" rx="70" ry="24" />
-        <ellipse cx="430" cy="48" rx="110" ry="18" />
-        <ellipse cx="520" cy="40" rx="60" ry="22" />
-      </g>
-    </svg>
   );
 }
 
