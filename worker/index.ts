@@ -4,7 +4,7 @@ import { demoData } from "../shared/seed";
 import type { ImportResult, Lead } from "../shared/types";
 import { runImport } from "./import";
 import { generateArt, ingestArt } from "./art";
-import { narration, narrationStatus } from "./narration";
+import { music, musicStatus } from "./music";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -16,8 +16,6 @@ export interface Env {
   APP_NAME: string;
   APP_DOMAIN: string;
   ART_INGEST_TOKEN?: string;
-  ELEVENLABS_API_KEY?: string;
-  ELEVENLABS_VOICE_ID?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -127,9 +125,9 @@ app.get("/api/art/:slug", async (c) => {
 // URL(s) and stores them in R2 as the authoritative art.
 app.get("/api/admin/ingest-art", (c) => ingestArt(c));
 
-// ElevenLabs narration for the demo video (cached in R2).
-app.get("/api/narration/status", (c) => narrationStatus(c));
-app.get("/api/narration", (c) => narration(c));
+// Optional background music for the demo video (R2 or committed asset).
+app.get("/api/music/status", (c) => musicStatus(c));
+app.get("/api/music", (c) => music(c));
 
 // ---- SPA fallback: hand everything else to static assets -------------------
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));

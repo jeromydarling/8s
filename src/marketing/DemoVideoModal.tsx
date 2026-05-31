@@ -10,9 +10,9 @@ export default function DemoVideoModal({ open, onClose }: { open: boolean; onClo
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    fetch("/api/narration/status")
+    fetch("/api/music/status")
       .then((r) => (r.ok ? r.json() : { available: false }))
-      .then((d: { available?: boolean }) => alive && d.available && setAudioSrc("/api/narration"))
+      .then((d: { available?: boolean }) => alive && d.available && setAudioSrc("/api/music"))
       .catch(() => {});
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
