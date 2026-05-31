@@ -7,13 +7,14 @@ import type { Env } from "./index";
 // page is beautiful before AI warms up. A nod to the Great American West.
 
 // Bump to invalidate every cached image (edge + R2) after a prompt/style change.
-const ART_VERSION = "3";
+const ART_VERSION = "4";
 
 const STYLE =
   "vintage American watercolor illustration, hand painted on cotton rag paper, loose wet-on-wet washes, visible paper grain and paint bleed, soft feathered edges, muted dusty antique palette of ochre sienna sage and faded indigo, early 1900s western travel-poster feeling, painterly and flat, gentle and nostalgic";
 
 const NEGATIVE =
-  "photograph, photo, photorealistic, realistic, hyperrealistic, 3d render, cgi, octane, dslr, sharp focus, depth of field, hdr, glossy, plastic, lens flare, neon, text, words, letters, watermark, signature, frame, border";
+  "photograph, photo, photorealistic, realistic, hyperrealistic, 3d render, cgi, octane, dslr, sharp focus, depth of field, hdr, glossy, plastic, lens flare, neon, text, words, letters, watermark, signature, frame, border, " +
+  "extra legs, extra limbs, two heads, multiple heads, duplicated horse, multiple horses, crowd, deformed, mutated, fused, distorted anatomy, malformed, blurry faces, melted faces";
 
 interface Preset {
   scene: string;
@@ -31,7 +32,7 @@ const PRESETS: Record<string, Preset> = {
   },
   rider: {
     scene:
-      "a young cowgirl barrel racer in a cowboy hat galloping her horse hard around a barrel in a dusty rodeo arena, the horse leaning into the turn with dirt kicking up, warm dusk light, energy and motion",
+      "one cowgirl on a single horse rounding one barrel in an empty rodeo arena, side view, dust kicking up, warm dusk light, lots of clean empty background, simple composition, only one horse, no crowd, no spectators",
     palette: ["#f6e7cb", "#f2c98f", "#d98e63", "#9c5a44", "#5e3829"],
     sun: "#f9d79e",
     silhouette: "rider",
@@ -45,16 +46,17 @@ const PRESETS: Record<string, Preset> = {
   },
   arena: {
     scene:
-      "a small town rodeo arena at dusk with a wooden fence and grandstands, a lone horse and rider waiting in the alley, warm lights, prairie behind",
+      "an empty small town rodeo arena at dusk, a weathered wooden fence in the foreground and quiet grandstands, prairie and big sky behind, no people, no animals, calm and still",
     palette: ["#e9dcc2", "#e0c190", "#c98f63", "#7e5640", "#3f2c20"],
     sun: "#f6d9a0",
     silhouette: "fence",
   },
   community: {
     scene:
-      "rodeo families gathered at a country fairground in the evening with horses and trailers, warm lantern light, a sense of belonging and solidarity",
+      "one cowboy standing beside his single saddled horse at a wooden hitching rail at golden hour, quiet companionship, simple composition, only one horse and one person, no crowd",
     palette: ["#f3e6cf", "#efc98f", "#dd9a62", "#a3654a", "#5d3a2b"],
     sun: "#fbe0ad",
+    silhouette: "horse",
   },
   trail: {
     scene:
@@ -66,7 +68,7 @@ const PRESETS: Record<string, Preset> = {
   // A clear, prominent rodeo horse for the marketing page.
   barrelracer: {
     scene:
-      "a cowgirl and her sorrel horse rounding the final barrel at a full run in a rodeo arena, mane and dirt flying, crowd softly blurred in the stands, golden late-afternoon light",
+      "one cowgirl on a single sorrel horse rounding one barrel at a full run, side profile, mane and dirt flying, empty rodeo arena behind, golden late-afternoon light, simple clean composition, only one horse, no crowd, no spectators, no extra legs",
     palette: ["#f6e6c6", "#eec487", "#d6905f", "#a85f41", "#5e3727"],
     sun: "#f9d79e",
     silhouette: "rider",
@@ -110,11 +112,11 @@ export async function generateArt(c: Context<{ Bindings: Env }>, slug: string): 
   // 3) Generate with Workers AI (SDXL-Lightning + negative prompt).
   if (c.env.AI) {
     try {
-      const stream = (await c.env.AI.run("@cf/bytedance/stable-diffusion-xl-lightning", {
+      const stream = (await c.env.AI.run("@cf/stabilityai/stable-diffusion-xl-base-1.0", {
         prompt: `${preset.scene}. ${STYLE}`,
         negative_prompt: NEGATIVE,
-        num_steps: 8,
-        guidance: 1.5,
+        num_steps: 20,
+        guidance: 7,
         width: 1280,
         height: 768,
       })) as ReadableStream;
