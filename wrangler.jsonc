@@ -25,14 +25,11 @@
       "database_id": "2ed05721-0fdc-42fa-8629-b7f2a3f3ac2d",
       "migrations_dir": "worker/db/migrations"
     }
+  ],
+  // MEDIA persists AI-generated watercolors across deploys; UPLOADS backs the
+  // import feature's file storage. art.ts uses MEDIA when present, edge cache otherwise.
+  "r2_buckets": [
+    { "binding": "MEDIA", "bucket_name": "eight-seconds-media" },
+    { "binding": "UPLOADS", "bucket_name": "eight-seconds-uploads" }
   ]
-  // ---------------------------------------------------------------------------
-  // R2 buckets (enable R2 on the account first, then create the buckets and
-  // uncomment). art.ts persists generated watercolors to MEDIA; until then the
-  // edge cache (caches.default) handles art caching at runtime.
-  //
-  // "r2_buckets": [
-  //   { "binding": "UPLOADS", "bucket_name": "eight-seconds-uploads" },
-  //   { "binding": "MEDIA", "bucket_name": "eight-seconds-media" }
-  // ]
 }
