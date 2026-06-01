@@ -60,47 +60,65 @@ export async function music(c: Context<{ Bindings: Env }>): Promise<Response> {
   const debug = c.req.query("debug") === "1";
   const steps: Record<string, unknown> = { hasKey: !!c.env.ELEVEN_LABS_API_KEY, hasMedia: !!c.env.MEDIA };
 
-  const cache = caches.default;
-  const cacheKey = new Request(new URL(c.req.url).origin + "/api/music");
-  if (!debug) {
-    const hit = await cache.match(cacheKey);
-    if (hit) return hit;
-  }
+  // Resolve the MP3 bytes once (R2 -> committed asset -> ElevenLabs), then serve
+  // with Content-Length + Range support — media elements (incl. Remotion <Audio>)
+  // need byte-range responses or they refuse to play.
+  let bytes: Uint8Array | null = null;
 
-  const serve = (body: BodyInit) => {
-    const resp = new Response(body, {
-      headers: { "Content-Type": "audio/mpeg", "Cache-Control": "public, max-age=31536000" },
-    });
-    c.executionCtx.waitUntil(cache.put(cacheKey, resp.clone()));
-    return resp;
-  };
-
-  // 1) R2 cache.
   if (c.env.MEDIA) {
     const obj = await c.env.MEDIA.get(KEY).catch(() => null);
     steps.r2Hit = !!obj;
-    if (obj && !debug) return serve(obj.body);
+    if (obj) bytes = new Uint8Array(await obj.arrayBuffer());
   }
 
-  // 2) Committed static asset.
-  const origin = new URL(c.req.url).origin;
-  const asset = await c.env.ASSETS.fetch(new Request(`${origin}/audio/tour-music.mp3`)).catch(() => null);
-  steps.assetHit = !!asset?.ok;
-  if (asset?.ok && !debug) return serve(asset.body!);
+  if (!bytes) {
+    const origin = new URL(c.req.url).origin;
+    const asset = await c.env.ASSETS.fetch(new Request(`${origin}/audio/tour-music.mp3`)).catch(() => null);
+    steps.assetHit = !!asset?.ok;
+    if (asset?.ok) bytes = new Uint8Array(await asset.arrayBuffer());
+  }
 
-  // 3) Generate with ElevenLabs.
-  const gen = await generate(c.env);
-  steps.generate = gen.info;
-  if (gen.bytes && gen.bytes.byteLength > 1024) {
-    if (c.env.MEDIA) {
-      c.executionCtx.waitUntil(
-        c.env.MEDIA.put(KEY, gen.bytes, { httpMetadata: { contentType: "audio/mpeg" } }).then(() => undefined),
-      );
+  if (!bytes) {
+    const gen = await generate(c.env);
+    steps.generate = gen.info;
+    if (gen.bytes && gen.bytes.byteLength > 1024) {
+      bytes = gen.bytes;
+      if (c.env.MEDIA) {
+        c.executionCtx.waitUntil(
+          c.env.MEDIA.put(KEY, gen.bytes, { httpMetadata: { contentType: "audio/mpeg" } }).then(() => undefined),
+        );
+      }
     }
-    if (debug) return c.json({ ok: true, ...steps });
-    return serve(gen.bytes);
   }
 
-  if (debug) return c.json({ ok: false, ...steps });
-  return new Response(null, { status: 204 });
+  if (debug) return c.json({ ok: !!bytes, bytes: bytes?.byteLength ?? 0, ...steps });
+  if (!bytes) return new Response(null, { status: 204 });
+
+  const total = bytes.byteLength;
+  const range = c.req.header("range");
+  const baseHeaders: Record<string, string> = {
+    "Content-Type": "audio/mpeg",
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "public, max-age=31536000",
+  };
+
+  if (range) {
+    const m = /bytes=(\d*)-(\d*)/.exec(range);
+    const start = m && m[1] ? parseInt(m[1], 10) : 0;
+    const end = m && m[2] ? parseInt(m[2], 10) : total - 1;
+    if (start >= total || start > end) {
+      return new Response(null, { status: 416, headers: { ...baseHeaders, "Content-Range": `bytes */${total}` } });
+    }
+    const slice = bytes.subarray(start, end + 1);
+    return new Response(slice, {
+      status: 206,
+      headers: {
+        ...baseHeaders,
+        "Content-Range": `bytes ${start}-${end}/${total}`,
+        "Content-Length": String(slice.byteLength),
+      },
+    });
+  }
+
+  return new Response(bytes, { status: 200, headers: { ...baseHeaders, "Content-Length": String(total) } });
 }

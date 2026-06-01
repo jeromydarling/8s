@@ -16,7 +16,7 @@ import type { ReactNode } from "react";
    background music. No narration.
    =========================================================================== */
 
-export const VIDEO = { fps: 30, width: 1280, height: 720, durationInFrames: 690 };
+export const VIDEO = { fps: 30, width: 1280, height: 720, durationInFrames: 1140 };
 
 const C = {
   ink: "#2b1d12",
@@ -162,7 +162,7 @@ function Wipe() {
 function Intro() {
   const r = useSpringAt(0, 11);
   const frame = useCurrentFrame();
-  const timer = interpolate(frame, [16, 70], [0, 8], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const timer = interpolate(frame, [20, 135], [0, 8], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   return (
     <AbsoluteFill>
       <Backdrop tint="rgba(43,29,18,0.7)" />
@@ -277,29 +277,29 @@ export const DemoVideo: React.FC<{ audioSrc?: string | null }> = ({ audioSrc }) 
     <AbsoluteFill style={{ backgroundColor: C.ink }}>
       {audioSrc ? <Audio src={audioSrc} volume={0.6} /> : null}
 
-      <Sequence durationInFrames={95}><Intro /></Sequence>
-      <Sequence from={95} durationInFrames={90}><Problem /></Sequence>
+      <Sequence durationInFrames={150}><Intro /></Sequence>
+      <Sequence from={150} durationInFrames={150}><Problem /></Sequence>
 
-      <Sequence from={185} durationInFrames={80}>
+      <Sequence from={300} durationInFrames={150}>
         <Feature eyebrow="The Draw" headline="Every event, one feed." sub="NHSRA, NLBRA, your local jackpots — filtered, with deadline alerts so you never miss a draw." />
       </Sequence>
-      <Sequence from={265} durationInFrames={80}>
+      <Sequence from={450} durationInFrames={150}>
         <Feature eyebrow="The Buckle Board" headline="Know where they stand." sub="Every qualifying ladder, mapped — points, placings, days left. No more calling directors to guess." />
       </Sequence>
-      <Sequence from={345} durationInFrames={80}>
+      <Sequence from={600} durationInFrames={150}>
         <Feature eyebrow="The Tack Room" headline="The horse comes first." sub="Farrier and vet reminders, a run log, the whole family and every horse under one roof." />
       </Sequence>
-      <Sequence from={425} durationInFrames={80}>
+      <Sequence from={750} durationInFrames={150}>
         <Feature eyebrow="The Sponsor Pen" headline="Sponsor-ready in a tap." sub="A shareable media kit with stats and schedule — ready to send a feed store before homework." />
       </Sequence>
-      <Sequence from={505} durationInFrames={80}>
+      <Sequence from={900} durationInFrames={150}>
         <Feature eyebrow="The Gatepost" headline="Fight for the arena." sub="When development threatens the grounds that raised us, organize the fight — together." />
       </Sequence>
 
-      <Sequence from={585} durationInFrames={105}><Outro /></Sequence>
+      <Sequence from={1050} durationInFrames={90}><Outro /></Sequence>
 
       {/* scene wipes */}
-      {[95, 185, 265, 345, 425, 505, 585].map((f) => (
+      {[150, 300, 450, 600, 750, 900, 1050].map((f) => (
         <Sequence key={f} from={f - 6} durationInFrames={20}>
           <Wipe />
         </Sequence>
