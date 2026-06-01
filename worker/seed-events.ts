@@ -19,6 +19,8 @@ interface RawEvent {
   end_date?: string;
   entry_deadline?: string;
   fee_per_event?: number;
+  lat?: number;
+  lng?: number;
   source_url?: string;
 }
 
@@ -31,7 +33,58 @@ interface RawArena {
   threat?: string;
   story?: string;
   economic_impact?: number;
+  lat?: number;
+  lng?: number;
   source_url?: string;
+}
+
+// US/Canada state & province centroids — last-resort so a pin always lands.
+const STATE_CENTROID: Record<string, [number, number]> = {
+  AL: [-86.79, 32.81], AK: [-152.0, 64.0], AZ: [-111.66, 34.17], AR: [-92.44, 34.97],
+  CA: [-119.68, 36.12], CO: [-105.31, 39.06], CT: [-72.76, 41.6], DE: [-75.51, 39.32],
+  FL: [-81.69, 27.77], GA: [-83.64, 33.04], HI: [-157.5, 21.09], ID: [-114.48, 44.24],
+  IL: [-88.99, 40.35], IN: [-86.26, 39.85], IA: [-93.21, 42.01], KS: [-96.73, 38.53],
+  KY: [-84.67, 37.67], LA: [-91.87, 31.17], ME: [-69.38, 44.69], MD: [-76.8, 39.06],
+  MA: [-71.53, 42.23], MI: [-84.54, 43.33], MN: [-93.9, 45.69], MS: [-89.68, 32.74],
+  MO: [-92.29, 38.46], MT: [-110.45, 46.92], NE: [-98.27, 41.13], NV: [-117.06, 38.31],
+  NH: [-71.56, 43.45], NJ: [-74.52, 40.3], NM: [-106.25, 34.84], NY: [-74.95, 42.17],
+  NC: [-79.81, 35.63], ND: [-99.78, 47.53], OH: [-82.76, 40.39], OK: [-96.93, 35.57],
+  OR: [-122.07, 44.57], PA: [-77.21, 40.59], RI: [-71.51, 41.68], SC: [-80.95, 33.86],
+  SD: [-99.9, 44.3], TN: [-86.69, 35.75], TX: [-97.56, 31.05], UT: [-111.86, 40.15],
+  VT: [-72.71, 44.05], VA: [-78.17, 37.77], WA: [-121.49, 47.4], WV: [-80.95, 38.49],
+  WI: [-89.62, 44.27], WY: [-107.3, 42.76],
+  AB: [-114.46, 53.93], BC: [-123.0, 53.73], ON: [-85.32, 51.25], SK: [-106.0, 55.0],
+  MB: [-98.74, 53.76],
+};
+
+const STATE_ABBR: Record<string, string> = {
+  alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA",
+  colorado: "CO", connecticut: "CT", delaware: "DE", florida: "FL", georgia: "GA",
+  hawaii: "HI", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA", kansas: "KS",
+  kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD", massachusetts: "MA",
+  michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO", montana: "MT",
+  nebraska: "NE", nevada: "NV", "new hampshire": "NH", "new jersey": "NJ",
+  "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND",
+  ohio: "OH", oklahoma: "OK", oregon: "OR", pennsylvania: "PA", "rhode island": "RI",
+  "south carolina": "SC", "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT",
+  vermont: "VT", virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI",
+  wyoming: "WY", alberta: "AB", "british columbia": "BC", ontario: "ON",
+  saskatchewan: "SK", manitoba: "MB",
+};
+
+function stateCode(s: string | undefined): string {
+  if (!s) return "";
+  const t = s.trim();
+  if (t.length === 2) return t.toUpperCase();
+  return STATE_ABBR[t.toLowerCase()] ?? t.toUpperCase();
+}
+
+function validCoord(lat: unknown, lng: unknown): [number, number] | null {
+  const la = Number(lat), ln = Number(lng);
+  if (Number.isFinite(la) && Number.isFinite(ln) && Math.abs(la) <= 85 && Math.abs(ln) <= 180 && (la !== 0 || ln !== 0)) {
+    return [ln, la]; // [lng, lat]
+  }
+  return null;
 }
 
 async function perplexity(env: Env, prompt: string): Promise<unknown> {
@@ -86,43 +139,60 @@ function sliceJson(text: string, open: string, close: string): string | null {
   }
 }
 
-async function geocode(env: Env, opts: { venue?: string; city: string; state: string }): Promise<[number, number] | null> {
-  const { city, state } = opts;
-  // 1) Mapbox v6 (if a token is configured) — best quality.
-  if (env.MAPBOX_TOKEN) {
+// Resolve coordinates with layered fallbacks so a pin ALWAYS lands:
+// model-provided lat/lng -> Mapbox v6 -> US Census -> state centroid.
+async function resolveCoords(
+  env: Env,
+  opts: { city: string; state: string; lat?: number; lng?: number },
+): Promise<[number, number]> {
+  const code = stateCode(opts.state);
+
+  // 0) Coordinates the model returned (validated).
+  const fromModel = validCoord(opts.lat, opts.lng);
+  if (fromModel) return fromModel;
+
+  // 1) Mapbox v6 forward geocoder.
+  if (env.MAPBOX_TOKEN && opts.city) {
     try {
       const url =
         `https://api.mapbox.com/search/geocode/v6/forward?country=US&limit=1` +
-        `&place=${encodeURIComponent(city)}&region=${encodeURIComponent(state)}` +
+        `&place=${encodeURIComponent(opts.city)}&region=${encodeURIComponent(code)}` +
         `&access_token=${env.MAPBOX_TOKEN}`;
       const r = await fetch(url);
       if (r.ok) {
         const d = (await r.json()) as { features?: Array<{ geometry?: { coordinates?: [number, number] } }> };
         const c = d.features?.[0]?.geometry?.coordinates;
-        if (c && Number.isFinite(c[0]) && Number.isFinite(c[1])) return [c[0], c[1]]; // [lng, lat]
+        const v = c ? validCoord(c[1], c[0]) : null;
+        if (v) return v;
       }
     } catch {
-      /* fall through to Census */
+      /* next */
     }
   }
-  // 2) US Census geocoder — free, no key. City + state is enough.
-  try {
-    const addr = `${city}, ${state}`;
-    const url = `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=${encodeURIComponent(
-      addr,
-    )}&benchmark=Public_AR_Current&format=json`;
-    const r = await fetch(url);
-    if (r.ok) {
-      const d = (await r.json()) as {
-        result?: { addressMatches?: Array<{ coordinates?: { x: number; y: number } }> };
-      };
-      const co = d.result?.addressMatches?.[0]?.coordinates;
-      if (co) return [co.x, co.y]; // x=lng, y=lat
+
+  // 2) US Census geocoder (free, US only).
+  if (opts.city) {
+    try {
+      const addr = `${opts.city}, ${code}`;
+      const url = `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=${encodeURIComponent(
+        addr,
+      )}&benchmark=Public_AR_Current&format=json`;
+      const r = await fetch(url);
+      if (r.ok) {
+        const d = (await r.json()) as {
+          result?: { addressMatches?: Array<{ coordinates?: { x: number; y: number } }> };
+        };
+        const co = d.result?.addressMatches?.[0]?.coordinates;
+        const v = co ? validCoord(co.y, co.x) : null;
+        if (v) return v;
+      }
+    } catch {
+      /* next */
     }
-  } catch {
-    /* give up */
   }
-  return null;
+
+  // 3) State/province centroid — guaranteed.
+  return STATE_CENTROID[code] ?? [-98.5, 39.8]; // geographic center of US
 }
 
 // Deterministic id so re-running the seed updates rather than duplicates rows.
@@ -151,17 +221,15 @@ export async function runSeedEvents(
 ): Promise<{ inserted: number; events: Array<Record<string, unknown>> }> {
   const db = env.DB!;
   const report: Array<Record<string, unknown>> = [];
-  const prompt = `List up to 12 real upcoming youth rodeo events (NHSRA, NJHRA, NLBRA, AJRA, or state junior rodeo associations) in ${state} for 2026. Return a JSON array; each item: {"name","association","disciplines":["..."],"venue","city","state","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","entry_deadline":"YYYY-MM-DD","fee_per_event":number,"source_url"}. Use real venues and cities. If a field is unknown, use null.`;
+  const prompt = `List up to 12 real upcoming youth rodeo events (NHSRA, NJHRA, NLBRA, AJRA, or state junior rodeo associations) in ${state} for 2026. Return a JSON array; each item: {"name","association","disciplines":["..."],"venue","city","state","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","entry_deadline":"YYYY-MM-DD","fee_per_event":number,"lat":number,"lng":number,"source_url"}. Include the venue/city latitude and longitude as decimal degrees in lat/lng. Use real venues and cities. If a field is unknown, use null.`;
   const raw = (await perplexity(env, prompt)) as RawEvent[];
 
   const now = new Date().toISOString();
   for (const e of raw.slice(0, 12)) {
     if (!e?.name || !e?.city) continue;
-    const st = e.state || state;
-    const coords = await geocode(env, { venue: e.venue, city: e.city, state: st });
+    const st = stateCode(e.state || state);
+    const [lng, lat] = await resolveCoords(env, { city: e.city, state: st, lat: e.lat, lng: e.lng });
     const id = await stableId("pe", e.name, e.city, st);
-    const lat = coords ? coords[1] : null;
-    const lng = coords ? coords[0] : null;
     await db
       .prepare(
         `INSERT OR REPLACE INTO map_events
@@ -176,7 +244,7 @@ export async function runSeedEvents(
         JSON.stringify(["Pee Wee", "Junior", "Senior"]),
         e.venue ?? null,
         e.city,
-        e.state ?? state,
+        st,
         e.start_date ?? null,
         e.end_date ?? null,
         e.entry_deadline ?? null,
@@ -189,7 +257,7 @@ export async function runSeedEvents(
         now,
       )
       .run();
-    report.push({ name: e.name, city: e.city, geocoded: !!coords });
+    report.push({ name: e.name, city: e.city, state: st });
   }
   return { inserted: report.length, events: report };
 }
@@ -211,14 +279,15 @@ export async function runSeedArenas(
 ): Promise<{ inserted: number; arenas: Array<Record<string, unknown>> }> {
   const db = env.DB!;
   const report: Array<Record<string, unknown>> = [];
-  const prompt = `List up to 10 real US rodeo arenas or fairgrounds that have faced closure, rezoning, development pressure, or noise complaints (or notable ones that were saved by community action). Return a JSON array; each: {"name","city","state","status":"threatened|watch|saved|safe","years_active":number,"threat":"short description","story":"1-2 sentences","economic_impact":number,"source_url"}. Use real places and real news.`;
+  const prompt = `List up to 10 real US rodeo arenas or fairgrounds that have faced closure, rezoning, development pressure, or noise complaints (or notable ones that were saved by community action). Return a JSON array; each: {"name","city","state","status":"threatened|watch|saved|safe","years_active":number,"threat":"short description","story":"1-2 sentences","economic_impact":number,"lat":number,"lng":number,"source_url"}. Include the venue latitude and longitude as decimal degrees in lat/lng. Use real places and real news.`;
   const raw = (await perplexity(env, prompt)) as RawArena[];
 
   const now = new Date().toISOString();
   for (const a of raw.slice(0, 10)) {
     if (!a?.name || !a?.city) continue;
-    const coords = await geocode(env, { venue: a.name, city: a.city, state: a.state || "" });
-    const id = await stableId("pa", a.name, a.city, a.state || "");
+    const st = stateCode(a.state);
+    const [lng, lat] = await resolveCoords(env, { city: a.city, state: st, lat: a.lat, lng: a.lng });
+    const id = await stableId("pa", a.name, a.city, st);
     await db
       .prepare(
         `INSERT OR REPLACE INTO map_arenas
@@ -229,20 +298,20 @@ export async function runSeedArenas(
         id,
         a.name,
         a.city,
-        a.state ?? null,
+        st || null,
         a.status ?? "watch",
         a.years_active ?? null,
         a.threat ?? null,
         a.story ?? null,
         a.economic_impact ?? null,
-        coords ? coords[1] : null,
-        coords ? coords[0] : null,
+        lat,
+        lng,
         "perplexity",
         a.source_url ?? null,
         now,
       )
       .run();
-    report.push({ name: a.name, city: a.city, status: a.status, geocoded: !!coords });
+    report.push({ name: a.name, city: a.city, status: a.status });
   }
   return { inserted: report.length, arenas: report };
 }
