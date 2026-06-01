@@ -6,11 +6,20 @@ import type { Env } from "./index";
 // Order: R2 cache -> committed static asset -> ElevenLabs generation.
 // /api/music?debug=1 always returns JSON describing what happened.
 
-const VERSION = "2";
+const VERSION = "3";
 const KEY = `audio/tour-music-v${VERSION}.mp3`;
 const LENGTH_MS = 24_000;
 const PROMPT =
   "Warm instrumental country Americana for a heartfelt rodeo brand film. Gentle fingerpicked acoustic guitar, soft pedal steel, light brushed drums and upright bass, hopeful and uplifting, wide-open Western feeling, mid-tempo, no vocals, no spoken word.";
+
+// True only for real MP3 bytes (ID3 tag or MPEG frame sync). Guards against a
+// poisoned cache — e.g. an earlier build saved the SPA index.html as the mp3.
+function isMp3(b: Uint8Array | null | undefined): boolean {
+  if (!b || b.byteLength < 1024) return false;
+  if (b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) return true; // "ID3"
+  if (b[0] === 0xff && (b[1] & 0xe0) === 0xe0) return true; // frame sync
+  return false;
+}
 
 export async function musicStatus(c: Context<{ Bindings: Env }>): Promise<Response> {
   let available = false;
@@ -65,27 +74,28 @@ export async function music(c: Context<{ Bindings: Env }>): Promise<Response> {
   // need byte-range responses or they refuse to play.
   let bytes: Uint8Array | null = null;
 
+  // 1) R2 cache — only trust it if it's real MP3.
   if (c.env.MEDIA) {
     const obj = await c.env.MEDIA.get(KEY).catch(() => null);
-    steps.r2Hit = !!obj;
-    if (obj) bytes = new Uint8Array(await obj.arrayBuffer());
+    if (obj) {
+      const b = new Uint8Array(await obj.arrayBuffer());
+      steps.r2Hit = isMp3(b) ? "valid" : "rejected (not mp3)";
+      if (isMp3(b)) bytes = b;
+    } else {
+      steps.r2Hit = false;
+    }
   }
 
-  if (!bytes) {
-    const origin = new URL(c.req.url).origin;
-    const asset = await c.env.ASSETS.fetch(new Request(`${origin}/audio/tour-music.mp3`)).catch(() => null);
-    steps.assetHit = !!asset?.ok;
-    if (asset?.ok) bytes = new Uint8Array(await asset.arrayBuffer());
-  }
-
+  // 2) ElevenLabs generation — the source of truth. (We intentionally do NOT
+  //    read the committed /audio asset: an earlier build poisoned it with HTML.)
   if (!bytes) {
     const gen = await generate(c.env);
     steps.generate = gen.info;
-    if (gen.bytes && gen.bytes.byteLength > 1024) {
+    if (isMp3(gen.bytes)) {
       bytes = gen.bytes;
       if (c.env.MEDIA) {
         c.executionCtx.waitUntil(
-          c.env.MEDIA.put(KEY, gen.bytes, { httpMetadata: { contentType: "audio/mpeg" } }).then(() => undefined),
+          c.env.MEDIA.put(KEY, bytes, { httpMetadata: { contentType: "audio/mpeg" } }).then(() => undefined),
         );
       }
     }
