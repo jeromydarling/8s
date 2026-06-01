@@ -19,12 +19,38 @@ See `README.md` for full architecture, schema, API, and provisioning.
 
 ## Provisioned Cloudflare resources
 
-- **D1** `eight_seconds_db` — id `2ed05721-0fdc-42fa-8629-b7f2a3f3ac2d`
-  (binding `DB`; schema applied; persistent lead capture + write-back).
-- **Workers AI** — binding `AI` (import synthesis + watercolor art). No provisioning.
-- **R2** — not yet enabled on the account. When enabled, create
-  `eight-seconds-media` / `eight-seconds-uploads` and uncomment the `r2_buckets`
-  block in `wrangler.jsonc` for cross-deploy art persistence + uploads.
+- **D1** `eight_seconds_db` — id `2ed05721-0fdc-42fa-8629-b7f2a3f3ac2d` (binding `DB`).
+  Migrations 0001–0003 applied. Tables: leads, demo mirror, map_events/map_arenas
+  (Perplexity-seeded), plus accounts/persistence: users, contestants_u, horses_u,
+  watchlist, alert_subs, alerts, event_submissions, analytics_events.
+- **Workers AI** — binding `AI` (import synthesis + watercolor art).
+- **R2** — `eight-seconds-media` (art + music cache), `eight-seconds-uploads`.
+
+## Secrets / vars (set on the `8s` Worker)
+
+- `MAPBOX_TOKEN` (var, public pk.*) — maps + geocoding.
+- `PERPLEXITY_API_KEY` (secret) — real-event seeding.
+- `ELEVEN_LABS_API_KEY` (secret) — demo-video music generation.
+- `ART_INGEST_TOKEN` (var) — guards /api/admin/* + the GitHub seed workflow.
+- `SESSION_SECRET` (secret, **recommended**) — signs auth session cookies; falls
+  back to a fixed dev secret if unset (fine for preview, set before real users).
+- `RESEND_API_KEY` (secret, optional) — sends deadline-alert emails; without it,
+  alerts still appear in-app and the cron logs intended sends.
+
+## Crons
+
+- Daily `0 13 * * *` — compute deadline alerts (`worker/alerts.ts`).
+- Weekly `0 13 * * 1` — also reseed real events/arenas via Perplexity.
+- On-demand: GitHub Actions "Seed real rodeo data" workflow (manual button).
+
+## Product surfaces
+
+- Marketing `/` (ungated — CTAs go straight to `/app`), `/submit` (supply side).
+- App `/app/*` — works as a preview for anyone; signing in (AuthModal) persists
+  roster + watchlist + alerts to D1. Real events from `/api/events`.
+- SEO: build-time static `/rodeos/<state>/` + per-event pages (scripts/gen-seo.mjs).
+- PWA: `public/manifest.webmanifest` + `public/sw.js` (installable, offline shell).
+- Analytics: first-party `/api/track` → `analytics_events` (src/lib/track.ts).
 
 ## Conventions
 
