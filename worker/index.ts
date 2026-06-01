@@ -12,6 +12,7 @@ import {
   runSeedEvents,
   runSeedArenas,
 } from "./seed-events";
+import { music, musicStatus } from "./music";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -25,6 +26,7 @@ export interface Env {
   ART_INGEST_TOKEN?: string;
   MAPBOX_TOKEN?: string; // public pk.* token for Mapbox GL
   PERPLEXITY_API_KEY?: string; // secret, server-side seeding only
+  ELEVEN_LABS_API_KEY?: string; // secret, demo-video music generation
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -144,6 +146,10 @@ app.get("/api/events", (c) => listEvents(c));
 app.get("/api/arenas", (c) => listArenas(c));
 app.post("/api/admin/seed-events", (c) => seedEvents(c));
 app.post("/api/admin/seed-arenas", (c) => seedArenas(c));
+
+// Demo-video background music (ElevenLabs, cached in R2).
+app.get("/api/music/status", (c) => musicStatus(c));
+app.get("/api/music", (c) => music(c));
 
 // ---- SPA fallback: hand everything else to static assets -------------------
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));

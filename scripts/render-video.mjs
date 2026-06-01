@@ -39,7 +39,6 @@ try {
     const inputs = await Promise.all([
       mtime(path.join(root, "src/video/DemoVideo.tsx")),
       mtime(path.join(root, "src/video/Root.tsx")),
-      mtime(path.join(root, "public/audio/tour-music.wav")),
       mtime(path.join(root, "public/audio/tour-music.mp3")),
     ]);
     if (Math.max(...inputs) < outAge) {
@@ -54,26 +53,27 @@ try {
   console.log("[video] bundling composition…");
   const serveUrl = await bundle({ entryPoint: entry, onProgress: () => {} });
 
-  // Prefer a committed real mp3 if present, else the procedural wav.
-  let audioFile = "audio/tour-music.wav";
+  // Mux the real track if it was fetched; otherwise render silent (the player
+  // streams /api/music at runtime as the fallback).
+  let audioSrc = null;
   try {
     await access(path.join(root, "public/audio/tour-music.mp3"));
-    audioFile = "audio/tour-music.mp3";
-  } catch { /* use wav */ }
+    audioSrc = "/audio/tour-music.mp3";
+  } catch { /* render silent */ }
 
   const composition = await selectComposition({
     serveUrl,
     id: "tour",
-    inputProps: { audioSrc: `/${audioFile}` },
+    inputProps: { audioSrc },
   });
 
-  console.log(`[video] rendering ${composition.durationInFrames} frames with ${audioFile}…`);
+  console.log(`[video] rendering ${composition.durationInFrames} frames (audio: ${audioSrc ?? "none"})…`);
   await renderMedia({
     composition,
     serveUrl,
     codec: "h264",
     outputLocation: outFile,
-    inputProps: { audioSrc: `/${audioFile}` },
+    inputProps: { audioSrc },
     audioCodec: "aac",
     crf: 23,
     onProgress: ({ progress }) => {

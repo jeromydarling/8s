@@ -9,7 +9,7 @@ export interface PlayerHandle {
 // Fallback when the prerendered MP4 isn't available: live in-browser playback
 // with the music bed muxed in via the composition's <Audio>. Starts muted
 // (autoplay rule); the modal unmutes on a user click.
-const MUSIC = "/audio/tour-music.wav";
+const MUSIC = "/api/music";
 
 const DemoVideoPlayer = forwardRef<PlayerHandle>((_, ref) => {
   const playerRef = useRef<PlayerRef>(null);
