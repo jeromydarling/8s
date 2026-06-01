@@ -4,6 +4,7 @@ import { demoData } from "../shared/seed";
 import type { ImportResult, Lead } from "../shared/types";
 import { runImport } from "./import";
 import { generateArt, ingestArt } from "./art";
+import { seedEvents, seedArenas, listEvents, listArenas } from "./seed-events";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -130,6 +131,12 @@ app.get("/api/art/:slug", async (c) => {
 // One-time curated-art ingest (token-guarded). The Worker fetches the source
 // URL(s) and stores them in R2 as the authoritative art.
 app.get("/api/admin/ingest-art", (c) => ingestArt(c));
+
+// Real-data map feeds (D1, seeded via Perplexity) + admin seeding endpoints.
+app.get("/api/events", (c) => listEvents(c));
+app.get("/api/arenas", (c) => listArenas(c));
+app.post("/api/admin/seed-events", (c) => seedEvents(c));
+app.post("/api/admin/seed-arenas", (c) => seedArenas(c));
 
 // ---- SPA fallback: hand everything else to static assets -------------------
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));

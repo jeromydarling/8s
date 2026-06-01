@@ -408,14 +408,18 @@ function MapSection({ onDemo }: { onDemo: () => void }) {
   >([]);
   const [active, setActive] = useState<string | null>(null);
 
+  const [live, setLive] = useState(false);
+
   useEffect(() => {
     let alive = true;
-    api
-      .demo()
-      .then((d) => {
-        if (!alive) return;
+    // Prefer real Perplexity-seeded events; fall back to bundled demo events.
+    (async () => {
+      const real = await api.events();
+      if (!alive) return;
+      if (real) {
+        setLive(true);
         setPins(
-          d.events.map((e) => ({
+          real.map((e) => ({
             id: e.id,
             lat: e.lat,
             lng: e.lng,
@@ -424,8 +428,21 @@ function MapSection({ onDemo }: { onDemo: () => void }) {
             tone: e.status === "closing-soon" ? "rust" : e.status === "drawn" ? "turq" : "sage",
           })),
         );
-      })
-      .catch(() => {});
+        return;
+      }
+      const d = await api.demo().catch(() => null);
+      if (!alive || !d) return;
+      setPins(
+        d.events.map((e) => ({
+          id: e.id,
+          lat: e.lat,
+          lng: e.lng,
+          title: e.name,
+          subtitle: `${e.city}, ${e.state}`,
+          tone: e.status === "closing-soon" ? "rust" : e.status === "drawn" ? "turq" : "sage",
+        })),
+      );
+    })();
     return () => {
       alive = false;
     };
@@ -435,7 +452,7 @@ function MapSection({ onDemo }: { onDemo: () => void }) {
     <section className="relative mx-auto max-w-6xl px-5 py-24 md:py-28">
       <div className="grid items-center gap-12 md:grid-cols-2">
         <Reveal>
-          <Tag tone="turq">The Draw · discover & plan</Tag>
+          <Tag tone="turq">{live ? "Live data · real events" : "The Draw · discover & plan"}</Tag>
           <h2 className="mt-3 display-lg font-bold leading-[0.98] text-ink">Every rodeo on one map.</h2>
           <p className="mt-5 font-serif text-lg leading-relaxed text-ink/70">
             Stop hunting across a dozen association sites and Facebook groups. See every youth rodeo near you,
