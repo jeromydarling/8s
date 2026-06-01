@@ -91,7 +91,20 @@ export async function music(c: Context<{ Bindings: Env }>): Promise<Response> {
     }
   }
 
-  if (debug) return c.json({ ok: !!bytes, bytes: bytes?.byteLength ?? 0, ...steps });
+  if (debug) {
+    // Magic-byte sniff so we can confirm it's actually MP3 audio, not text/JSON.
+    let head = "";
+    let kind = "unknown";
+    if (bytes) {
+      const n = bytes.subarray(0, 4);
+      head = [...n].map((b) => b.toString(16).padStart(2, "0")).join(" ");
+      if (n[0] === 0x49 && n[1] === 0x44 && n[2] === 0x33) kind = "mp3 (ID3)";
+      else if (n[0] === 0xff && (n[1] & 0xe0) === 0xe0) kind = "mp3 (frame sync)";
+      else if (n[0] === 0x7b || n[0] === 0x5b) kind = "json/text (NOT audio)";
+      else if (n[0] === 0x52 && n[1] === 0x49 && n[2] === 0x46) kind = "wav/riff";
+    }
+    return c.json({ ok: !!bytes, bytes: bytes?.byteLength ?? 0, head, kind, ...steps });
+  }
   if (!bytes) return new Response(null, { status: 204 });
 
   const total = bytes.byteLength;
