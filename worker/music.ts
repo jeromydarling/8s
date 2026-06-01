@@ -6,11 +6,11 @@ import type { Env } from "./index";
 // Order: R2 cache -> committed static asset -> ElevenLabs generation.
 // /api/music?debug=1 always returns JSON describing what happened.
 
-const VERSION = "3";
+const VERSION = "4";
 const KEY = `audio/tour-music-v${VERSION}.mp3`;
-const LENGTH_MS = 24_000;
+const LENGTH_MS = 38_000;
 const PROMPT =
-  "Warm instrumental country Americana for a heartfelt rodeo brand film. Gentle fingerpicked acoustic guitar, soft pedal steel, light brushed drums and upright bass, hopeful and uplifting, wide-open Western feeling, mid-tempo, no vocals, no spoken word.";
+  "Fast, driving dark country instrumental in a minor key. Brooding outlaw/Western noir mood. Gritty palm-muted baritone electric guitar and resonator slide, galloping low tom and stomp-clap rhythm, dark walking upright bass, ominous fiddle stabs, hand percussion. Tense, cinematic, propulsive, building intensity. Spaghetti-western edge. No vocals, no spoken word.";
 
 // True only for real MP3 bytes (ID3 tag or MPEG frame sync). Guards against a
 // poisoned cache — e.g. an earlier build saved the SPA index.html as the mp3.
