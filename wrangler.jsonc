@@ -11,6 +11,9 @@
   "observability": {
     "enabled": true
   },
+  "triggers": {
+    "crons": ["0 13 * * 1"]
+  },
   "ai": {
     "binding": "AI"
   },

@@ -90,98 +90,115 @@ function guard(c: Context<{ Bindings: Env }>): Response | null {
   return null;
 }
 
-export async function seedEvents(c: Context<{ Bindings: Env }>): Promise<Response> {
-  const blocked = guard(c);
-  if (blocked) return blocked;
-  const db = c.env.DB!;
-  const state = (c.req.query("state") || "TX").toUpperCase();
+// Core seeding (no HTTP Context) so both the admin routes and the Cron trigger
+// can call it.
+export async function runSeedEvents(
+  env: Env,
+  state: string,
+): Promise<{ inserted: number; events: Array<Record<string, unknown>> }> {
+  const db = env.DB!;
   const report: Array<Record<string, unknown>> = [];
+  const prompt = `List up to 12 real upcoming youth rodeo events (NHSRA, NJHRA, NLBRA, AJRA, or state junior rodeo associations) in ${state} for 2026. Return a JSON array; each item: {"name","association","disciplines":["..."],"venue","city","state","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","entry_deadline":"YYYY-MM-DD","fee_per_event":number,"source_url"}. Use real venues and cities. If a field is unknown, use null.`;
+  const raw = (await perplexity(env, prompt)) as RawEvent[];
 
-  try {
-    const prompt = `List up to 12 real upcoming youth rodeo events (NHSRA, NJHRA, NLBRA, AJRA, or state junior rodeo associations) in ${state} for 2026. Return a JSON array; each item: {"name","association","disciplines":["..."],"venue","city","state","start_date":"YYYY-MM-DD","end_date":"YYYY-MM-DD","entry_deadline":"YYYY-MM-DD","fee_per_event":number,"source_url"}. Use real venues and cities. If a field is unknown, use null.`;
-    const raw = (await perplexity(c.env, prompt)) as RawEvent[];
-
-    const now = new Date().toISOString();
-    for (const e of raw.slice(0, 12)) {
-      if (!e?.name || !e?.city) continue;
-      const coords = await geocode(c.env, `${e.venue ? e.venue + ", " : ""}${e.city}, ${e.state || state}`);
-      const id = "pe_" + crypto.randomUUID().slice(0, 8);
-      const lat = coords ? coords[1] : null;
-      const lng = coords ? coords[0] : null;
-      await db.prepare(
+  const now = new Date().toISOString();
+  for (const e of raw.slice(0, 12)) {
+    if (!e?.name || !e?.city) continue;
+    const coords = await geocode(env, `${e.venue ? e.venue + ", " : ""}${e.city}, ${e.state || state}`);
+    const id = "pe_" + crypto.randomUUID().slice(0, 8);
+    const lat = coords ? coords[1] : null;
+    const lng = coords ? coords[0] : null;
+    await db
+      .prepare(
         `INSERT OR REPLACE INTO map_events
          (id,name,association,disciplines,divisions,venue,city,state,start_date,end_date,entry_deadline,fee_per_event,status,lat,lng,source,source_url,created_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
-        .bind(
-          id,
-          e.name,
-          e.association ?? null,
-          JSON.stringify(e.disciplines ?? []),
-          JSON.stringify(["Pee Wee", "Junior", "Senior"]),
-          e.venue ?? null,
-          e.city,
-          e.state ?? state,
-          e.start_date ?? null,
-          e.end_date ?? null,
-          e.entry_deadline ?? null,
-          e.fee_per_event ?? null,
-          "open",
-          lat,
-          lng,
-          "perplexity",
-          e.source_url ?? null,
-          now,
-        )
-        .run();
-      report.push({ name: e.name, city: e.city, geocoded: !!coords });
-    }
-    return c.json({ ok: true, state, inserted: report.length, events: report });
+      .bind(
+        id,
+        e.name,
+        e.association ?? null,
+        JSON.stringify(e.disciplines ?? []),
+        JSON.stringify(["Pee Wee", "Junior", "Senior"]),
+        e.venue ?? null,
+        e.city,
+        e.state ?? state,
+        e.start_date ?? null,
+        e.end_date ?? null,
+        e.entry_deadline ?? null,
+        e.fee_per_event ?? null,
+        "open",
+        lat,
+        lng,
+        "perplexity",
+        e.source_url ?? null,
+        now,
+      )
+      .run();
+    report.push({ name: e.name, city: e.city, geocoded: !!coords });
+  }
+  return { inserted: report.length, events: report };
+}
+
+export async function seedEvents(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const blocked = guard(c);
+  if (blocked) return blocked;
+  const state = (c.req.query("state") || "TX").toUpperCase();
+  try {
+    const r = await runSeedEvents(c.env, state);
+    return c.json({ ok: true, state, ...r });
   } catch (err) {
     return c.json({ ok: false, error: String(err) }, 500);
   }
 }
 
-export async function seedArenas(c: Context<{ Bindings: Env }>): Promise<Response> {
-  const blocked = guard(c);
-  if (blocked) return blocked;
-  const db = c.env.DB!;
+export async function runSeedArenas(
+  env: Env,
+): Promise<{ inserted: number; arenas: Array<Record<string, unknown>> }> {
+  const db = env.DB!;
   const report: Array<Record<string, unknown>> = [];
+  const prompt = `List up to 10 real US rodeo arenas or fairgrounds that have faced closure, rezoning, development pressure, or noise complaints (or notable ones that were saved by community action). Return a JSON array; each: {"name","city","state","status":"threatened|watch|saved|safe","years_active":number,"threat":"short description","story":"1-2 sentences","economic_impact":number,"source_url"}. Use real places and real news.`;
+  const raw = (await perplexity(env, prompt)) as RawArena[];
 
-  try {
-    const prompt = `List up to 10 real US rodeo arenas or fairgrounds that have faced closure, rezoning, development pressure, or noise complaints (or notable ones that were saved by community action). Return a JSON array; each: {"name","city","state","status":"threatened|watch|saved|safe","years_active":number,"threat":"short description","story":"1-2 sentences","economic_impact":number,"source_url"}. Use real places and real news.`;
-    const raw = (await perplexity(c.env, prompt)) as RawArena[];
-
-    const now = new Date().toISOString();
-    for (const a of raw.slice(0, 10)) {
-      if (!a?.name || !a?.city) continue;
-      const coords = await geocode(c.env, `${a.name}, ${a.city}, ${a.state || ""}`);
-      const id = "pa_" + crypto.randomUUID().slice(0, 8);
-      await db.prepare(
+  const now = new Date().toISOString();
+  for (const a of raw.slice(0, 10)) {
+    if (!a?.name || !a?.city) continue;
+    const coords = await geocode(env, `${a.name}, ${a.city}, ${a.state || ""}`);
+    const id = "pa_" + crypto.randomUUID().slice(0, 8);
+    await db
+      .prepare(
         `INSERT OR REPLACE INTO map_arenas
          (id,name,city,state,status,years_active,threat,story,economic_impact,lat,lng,source,source_url,created_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
-        .bind(
-          id,
-          a.name,
-          a.city,
-          a.state ?? null,
-          a.status ?? "watch",
-          a.years_active ?? null,
-          a.threat ?? null,
-          a.story ?? null,
-          a.economic_impact ?? null,
-          coords ? coords[1] : null,
-          coords ? coords[0] : null,
-          "perplexity",
-          a.source_url ?? null,
-          now,
-        )
-        .run();
-      report.push({ name: a.name, city: a.city, status: a.status, geocoded: !!coords });
-    }
-    return c.json({ ok: true, inserted: report.length, arenas: report });
+      .bind(
+        id,
+        a.name,
+        a.city,
+        a.state ?? null,
+        a.status ?? "watch",
+        a.years_active ?? null,
+        a.threat ?? null,
+        a.story ?? null,
+        a.economic_impact ?? null,
+        coords ? coords[1] : null,
+        coords ? coords[0] : null,
+        "perplexity",
+        a.source_url ?? null,
+        now,
+      )
+      .run();
+    report.push({ name: a.name, city: a.city, status: a.status, geocoded: !!coords });
+  }
+  return { inserted: report.length, arenas: report };
+}
+
+export async function seedArenas(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const blocked = guard(c);
+  if (blocked) return blocked;
+  try {
+    const r = await runSeedArenas(c.env);
+    return c.json({ ok: true, ...r });
   } catch (err) {
     return c.json({ ok: false, error: String(err) }, 500);
   }

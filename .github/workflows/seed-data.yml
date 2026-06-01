@@ -1,0 +1,46 @@
+name: Seed real rodeo data
+
+# Click "Run workflow" in the GitHub Actions tab — no terminal needed.
+# Calls the deployed Worker, which uses Perplexity + Mapbox to seed D1.
+on:
+  workflow_dispatch:
+    inputs:
+      states:
+        description: "Comma-separated US states for events (e.g. TX,OK,WY)"
+        required: true
+        default: "TX,OK,WY,CO"
+      seed_arenas:
+        description: "Also refresh the endangered-arenas map?"
+        type: boolean
+        default: true
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Seed events per state
+        env:
+          TOKEN: ${{ secrets.ART_INGEST_TOKEN || 'rowel-8s-ingest-a7f3c9e1' }}
+        run: |
+          BASE="https://8s.rodeo/api/admin"
+          IFS=',' read -ra STATES <<< "${{ github.event.inputs.states }}"
+          for s in "${STATES[@]}"; do
+            s_trim=$(echo "$s" | xargs)
+            echo "::group::Seeding events for $s_trim"
+            curl -sS -X POST "$BASE/seed-events?token=$TOKEN&state=$s_trim" | tee /tmp/out.json
+            echo ""
+            echo "::endgroup::"
+          done
+
+      - name: Seed arenas
+        if: ${{ github.event.inputs.seed_arenas == 'true' }}
+        env:
+          TOKEN: ${{ secrets.ART_INGEST_TOKEN || 'rowel-8s-ingest-a7f3c9e1' }}
+        run: |
+          echo "::group::Seeding arenas"
+          curl -sS -X POST "https://8s.rodeo/api/admin/seed-arenas?token=$TOKEN" | tee /tmp/arenas.json
+          echo ""
+          echo "::endgroup::"
+
+      - name: Summary
+        run: echo "Done. Reload 8s.rodeo — the maps now show real, geocoded data."

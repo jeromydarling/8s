@@ -4,7 +4,14 @@ import { demoData } from "../shared/seed";
 import type { ImportResult, Lead } from "../shared/types";
 import { runImport } from "./import";
 import { generateArt, ingestArt } from "./art";
-import { seedEvents, seedArenas, listEvents, listArenas } from "./seed-events";
+import {
+  seedEvents,
+  seedArenas,
+  listEvents,
+  listArenas,
+  runSeedEvents,
+  runSeedArenas,
+} from "./seed-events";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -141,4 +148,30 @@ app.post("/api/admin/seed-arenas", (c) => seedArenas(c));
 // ---- SPA fallback: hand everything else to static assets -------------------
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
-export default app;
+// States to refresh on the weekly cron (highest youth-rodeo density).
+const CRON_STATES = ["TX", "OK", "WY", "CO", "KS", "NM"];
+
+export default {
+  fetch: app.fetch,
+  // Weekly Cron: refresh real events for key states + arenas. No-ops cleanly if
+  // PERPLEXITY_API_KEY / DB are missing.
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    if (!env.PERPLEXITY_API_KEY || !env.DB) return;
+    ctx.waitUntil(
+      (async () => {
+        for (const state of CRON_STATES) {
+          try {
+            await runSeedEvents(env, state);
+          } catch (e) {
+            console.error("cron seed-events", state, e);
+          }
+        }
+        try {
+          await runSeedArenas(env);
+        } catch (e) {
+          console.error("cron seed-arenas", e);
+        }
+      })(),
+    );
+  },
+};
