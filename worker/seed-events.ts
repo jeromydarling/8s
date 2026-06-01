@@ -57,27 +57,80 @@ async function perplexity(env: Env, prompt: string): Promise<unknown> {
   });
   if (!res.ok) throw new Error(`Perplexity ${res.status}: ${await res.text().catch(() => "")}`);
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const text = data.choices?.[0]?.message?.content ?? "";
-  const start = text.indexOf("[");
-  const end = text.lastIndexOf("]");
-  if (start === -1 || end === -1) throw new Error("No JSON array in response");
-  return JSON.parse(text.slice(start, end + 1));
+  let text = (data.choices?.[0]?.message?.content ?? "").trim();
+  // strip ```json fences if present
+  text = text.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+
+  const arr = sliceJson(text, "[", "]");
+  if (arr) return JSON.parse(arr);
+  // model sometimes wraps the array in an object, e.g. {"events":[...]}
+  const obj = sliceJson(text, "{", "}");
+  if (obj) {
+    const parsed = JSON.parse(obj) as Record<string, unknown>;
+    const firstArray = Object.values(parsed).find((v) => Array.isArray(v));
+    if (firstArray) return firstArray;
+  }
+  throw new Error(`No JSON array in response: ${text.slice(0, 160)}`);
 }
 
-async function geocode(env: Env, q: string): Promise<[number, number] | null> {
-  if (!env.MAPBOX_TOKEN) return null;
+function sliceJson(text: string, open: string, close: string): string | null {
+  const start = text.indexOf(open);
+  const end = text.lastIndexOf(close);
+  if (start === -1 || end === -1 || end <= start) return null;
+  const raw = text.slice(start, end + 1).replace(/,(\s*[\]}])/g, "$1"); // trailing commas
   try {
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
-      q,
-    )}.json?country=US&limit=1&access_token=${env.MAPBOX_TOKEN}`;
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    const d = (await r.json()) as { features?: Array<{ center?: [number, number] }> };
-    const c = d.features?.[0]?.center;
-    return c ? [c[0], c[1]] : null; // [lng, lat]
+    JSON.parse(raw);
+    return raw;
   } catch {
     return null;
   }
+}
+
+async function geocode(env: Env, opts: { venue?: string; city: string; state: string }): Promise<[number, number] | null> {
+  const { venue, city, state } = opts;
+  // 1) Mapbox (if a token is configured) — best quality.
+  if (env.MAPBOX_TOKEN) {
+    try {
+      const q = `${venue ? venue + ", " : ""}${city}, ${state}`;
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
+        q,
+      )}.json?country=US&limit=1&access_token=${env.MAPBOX_TOKEN}`;
+      const r = await fetch(url);
+      if (r.ok) {
+        const d = (await r.json()) as { features?: Array<{ center?: [number, number] }> };
+        const c = d.features?.[0]?.center;
+        if (c) return [c[0], c[1]]; // [lng, lat]
+      }
+    } catch {
+      /* fall through to Census */
+    }
+  }
+  // 2) US Census geocoder — free, no key. City + state is enough.
+  try {
+    const addr = `${city}, ${state}`;
+    const url = `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=${encodeURIComponent(
+      addr,
+    )}&benchmark=Public_AR_Current&format=json`;
+    const r = await fetch(url);
+    if (r.ok) {
+      const d = (await r.json()) as {
+        result?: { addressMatches?: Array<{ coordinates?: { x: number; y: number } }> };
+      };
+      const co = d.result?.addressMatches?.[0]?.coordinates;
+      if (co) return [co.x, co.y]; // x=lng, y=lat
+    }
+  } catch {
+    /* give up */
+  }
+  return null;
+}
+
+// Deterministic id so re-running the seed updates rather than duplicates rows.
+async function stableId(prefix: string, ...parts: string[]): Promise<string> {
+  const data = new TextEncoder().encode(parts.join("|").toLowerCase());
+  const digest = await crypto.subtle.digest("SHA-1", data);
+  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${prefix}_${hex.slice(0, 12)}`;
 }
 
 function guard(c: Context<{ Bindings: Env }>): Response | null {
@@ -104,8 +157,9 @@ export async function runSeedEvents(
   const now = new Date().toISOString();
   for (const e of raw.slice(0, 12)) {
     if (!e?.name || !e?.city) continue;
-    const coords = await geocode(env, `${e.venue ? e.venue + ", " : ""}${e.city}, ${e.state || state}`);
-    const id = "pe_" + crypto.randomUUID().slice(0, 8);
+    const st = e.state || state;
+    const coords = await geocode(env, { venue: e.venue, city: e.city, state: st });
+    const id = await stableId("pe", e.name, e.city, st);
     const lat = coords ? coords[1] : null;
     const lng = coords ? coords[0] : null;
     await db
@@ -163,8 +217,8 @@ export async function runSeedArenas(
   const now = new Date().toISOString();
   for (const a of raw.slice(0, 10)) {
     if (!a?.name || !a?.city) continue;
-    const coords = await geocode(env, `${a.name}, ${a.city}, ${a.state || ""}`);
-    const id = "pa_" + crypto.randomUUID().slice(0, 8);
+    const coords = await geocode(env, { venue: a.name, city: a.city, state: a.state || "" });
+    const id = await stableId("pa", a.name, a.city, a.state || "");
     await db
       .prepare(
         `INSERT OR REPLACE INTO map_arenas
