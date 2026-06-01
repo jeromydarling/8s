@@ -87,19 +87,19 @@ function sliceJson(text: string, open: string, close: string): string | null {
 }
 
 async function geocode(env: Env, opts: { venue?: string; city: string; state: string }): Promise<[number, number] | null> {
-  const { venue, city, state } = opts;
-  // 1) Mapbox (if a token is configured) — best quality.
+  const { city, state } = opts;
+  // 1) Mapbox v6 (if a token is configured) — best quality.
   if (env.MAPBOX_TOKEN) {
     try {
-      const q = `${venue ? venue + ", " : ""}${city}, ${state}`;
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
-        q,
-      )}.json?country=US&limit=1&access_token=${env.MAPBOX_TOKEN}`;
+      const url =
+        `https://api.mapbox.com/search/geocode/v6/forward?country=US&limit=1` +
+        `&place=${encodeURIComponent(city)}&region=${encodeURIComponent(state)}` +
+        `&access_token=${env.MAPBOX_TOKEN}`;
       const r = await fetch(url);
       if (r.ok) {
-        const d = (await r.json()) as { features?: Array<{ center?: [number, number] }> };
-        const c = d.features?.[0]?.center;
-        if (c) return [c[0], c[1]]; // [lng, lat]
+        const d = (await r.json()) as { features?: Array<{ geometry?: { coordinates?: [number, number] } }> };
+        const c = d.features?.[0]?.geometry?.coordinates;
+        if (c && Number.isFinite(c[0]) && Number.isFinite(c[1])) return [c[0], c[1]]; // [lng, lat]
       }
     } catch {
       /* fall through to Census */

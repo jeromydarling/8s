@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ImportResult } from "@shared/types";
 import { useDemo } from "../lib/demo";
@@ -119,11 +119,47 @@ export function SponsorScreen() {
 /* ================= GATEPOST ================= */
 const arenaTone = { safe: "Safe", watch: "Watch", threatened: "Threatened", saved: "Saved" } as const;
 
+interface LiveArena {
+  id: string;
+  name: string;
+  city: string;
+  state: string;
+  status: string;
+  lat: number;
+  lng: number;
+}
+
 export function GatepostScreen() {
   const { data } = useDemo();
   const [signed, setSigned] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<string | null>(null);
+  const [liveArenas, setLiveArenas] = useState<LiveArena[] | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/arenas")
+      .then((r) => (r.ok ? r.json() : { arenas: null }))
+      .then((d: { arenas: LiveArena[] | null }) => alive && d.arenas && setLiveArenas(d.arenas))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   if (!data) return null;
+
+  const arenaTo = (s: string) =>
+    (s === "threatened" ? "rust" : s === "saved" ? "turq" : s === "watch" ? "gold" : "sage") as
+      | "rust"
+      | "turq"
+      | "gold"
+      | "sage";
+
+  // Map shows curated demo arenas + any real geocoded ones from Perplexity.
+  const mapPins = [
+    ...data.arenas.map((a) => ({ id: a.id, lat: a.lat, lng: a.lng, title: a.name, subtitle: `${a.city}, ${a.state}`, tone: arenaTo(a.status) })),
+    ...(liveArenas ?? []).map((a) => ({ id: a.id, lat: a.lat, lng: a.lng, title: a.name, subtitle: `${a.city}, ${a.state}`, tone: arenaTo(a.status) })),
+  ].map((p) => ({ ...p, active: p.id === selected }));
 
   return (
     <div>
@@ -133,23 +169,21 @@ export function GatepostScreen() {
         — together.
       </p>
 
+      {liveArenas && (
+        <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-turq">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-turq opacity-60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-turq" />
+          </span>
+          Live · {liveArenas.length} arenas in the news
+        </div>
+      )}
+
       <LazyRodeoMap
         className="mb-4 h-60 border border-saddle/20"
         selectedId={selected}
         onSelect={(id) => setSelected(id)}
-        pins={data.arenas.map((a) => ({
-          id: a.id,
-          lat: a.lat,
-          lng: a.lng,
-          title: a.name,
-          subtitle: `${a.city}, ${a.state}`,
-          tone: (a.status === "threatened" ? "rust" : a.status === "saved" ? "turq" : a.status === "watch" ? "gold" : "sage") as
-            | "rust"
-            | "turq"
-            | "gold"
-            | "sage",
-          active: a.id === selected,
-        }))}
+        pins={mapPins}
       />
       <div className="mb-4 flex flex-wrap gap-3 text-[10px] font-semibold text-ink/55">
         {[["rust", "Threatened"], ["gold", "Watch"], ["sage", "Safe"], ["turq", "Saved"]].map(([t, l]) => (
