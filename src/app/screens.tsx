@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Discipline, RodeoEvent } from "@shared/types";
 import { useDemo, demoName } from "../lib/demo";
+import { api } from "../lib/api";
 import { cn, Tag } from "../components/ui";
 import { LazyRodeoMap } from "../components/LazyRodeoMap";
 import {
@@ -121,6 +122,16 @@ export function DrawScreen() {
   const [added, setAdded] = useState<Record<string, boolean>>({});
   const [view, setView] = useState<"list" | "map" | "plan">("list");
   const [selected, setSelected] = useState<string | null>(null);
+  const [realEvents, setRealEvents] = useState<RodeoEvent[] | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.events().then((e) => alive && setRealEvents(e));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   if (!data) return null;
 
   const events = data.events
@@ -129,8 +140,10 @@ export function DrawScreen() {
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
 
   const planEvents = events.filter((e) => added[e.id] ?? e.added);
-  const mapEvents = view === "plan" ? planEvents : events;
-  const sel = events.find((e) => e.id === selected);
+  // Map view shows real, geocoded events when available; Plan uses the family's
+  // entered (demo) events for the route.
+  const mapEvents = view === "plan" ? planEvents : realEvents ?? events;
+  const sel = (realEvents ?? events).find((e) => e.id === selected) ?? events.find((e) => e.id === selected);
 
   return (
     <div>
@@ -179,6 +192,7 @@ export function DrawScreen() {
           selected={selected}
           onSelect={(id) => setSelected(id)}
           sel={sel}
+          live={view === "map" && !!realEvents}
         />
       )}
 
@@ -240,12 +254,14 @@ function MapPanel({
   selected,
   onSelect,
   sel,
+  live,
 }: {
   view: "map" | "plan";
   events: RodeoEvent[];
   selected: string | null;
   onSelect: (id: string) => void;
   sel: RodeoEvent | undefined;
+  live?: boolean;
 }) {
   const pins = events.map((e) => ({
     id: e.id,
@@ -266,6 +282,15 @@ function MapPanel({
 
   return (
     <div className="mb-4">
+      {live && (
+        <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold text-turq">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-turq opacity-60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-turq" />
+          </span>
+          Live · {events.length} real rodeos near you
+        </div>
+      )}
       {view === "plan" && (
         <Card className="mb-3 bg-leather text-bone">
           <div className="flex items-center justify-between">
