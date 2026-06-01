@@ -1,48 +1,38 @@
+import { Player, type PlayerRef } from "@remotion/player";
 import { AnimatePresence, motion } from "framer-motion";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Rowel } from "../components/ui";
-import type { PlayerHandle } from "./DemoVideoPlayer";
+import { DemoVideo, VIDEO } from "../video/DemoVideo";
 
-const PlayerFallback = lazy(() => import("./DemoVideoPlayer"));
-const MP4_SRC = "/video/tour.mp4";
-
+// The modal is opened by a click ("Watch the tour"), which gives us a user
+// gesture — so we can start playback WITH sound immediately. No buttons.
 export default function DemoVideoModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const playerRef = useRef<PlayerHandle>(null);
-  const [mode, setMode] = useState<"loading" | "mp4" | "player">("loading");
-  const [muted, setMuted] = useState(true);
+  const playerRef = useRef<PlayerRef>(null);
 
-  // Prefer the prerendered MP4 (visuals + music muxed). Fall back to live player.
   useEffect(() => {
     if (!open) return;
-    let alive = true;
-    fetch(MP4_SRC, { method: "HEAD" })
-      .then((r) => {
-        if (!alive) return;
-        setMode(r.ok && (r.headers.get("content-type") || "").includes("video") ? "mp4" : "player");
-      })
-      .catch(() => alive && setMode("player"));
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
+
+    // Let the player mount, then play unmuted using the still-active gesture.
+    const id = setTimeout(() => {
+      const p = playerRef.current;
+      if (!p) return;
+      try {
+        p.seekTo(0);
+        p.setVolume(1);
+        p.unmute();
+        p.play();
+      } catch {
+        /* ignore */
+      }
+    }, 120);
+
     return () => {
-      alive = false;
       window.removeEventListener("keydown", onKey);
+      clearTimeout(id);
     };
   }, [open, onClose]);
-
-  function toggleSound() {
-    const next = !muted;
-    if (mode === "mp4") {
-      const v = videoRef.current;
-      if (v) {
-        v.muted = !next;
-        if (next) v.play().catch(() => {});
-      }
-    } else {
-      playerRef.current?.toggleSound(next);
-    }
-    setMuted(!next);
-  }
 
   return (
     <AnimatePresence>
@@ -65,82 +55,32 @@ export default function DemoVideoModal({ open, onClose }: { open: boolean; onClo
               <span className="flex items-center gap-2 font-display text-xs font-semibold uppercase tracking-widest text-gold">
                 <Rowel className="h-4 w-4 text-gold" /> The quick tour
               </span>
-              <div className="flex items-center gap-2">
-                {mode !== "loading" && (
-                  <button
-                    onClick={toggleSound}
-                    className="flex items-center gap-1.5 rounded-full bg-gold px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-ink transition hover:brightness-105"
-                  >
-                    {muted ? <SoundOffIcon /> : <SoundOnIcon />}
-                    {muted ? "Play with sound" : "Sound on"}
-                  </button>
-                )}
-                <button
-                  onClick={onClose}
-                  className="grid h-8 w-8 place-items-center rounded-full bg-bone/10 text-bone transition hover:bg-bone/20"
-                  aria-label="Close"
-                >
-                  ✕
-                </button>
-              </div>
+              <button
+                onClick={onClose}
+                className="grid h-8 w-8 place-items-center rounded-full bg-bone/10 text-bone transition hover:bg-bone/20"
+                aria-label="Close"
+              >
+                ✕
+              </button>
             </div>
-
-            <div className="relative aspect-video w-full bg-black">
-              {mode === "mp4" && (
-                <video
-                  ref={videoRef}
-                  src={MP4_SRC}
-                  className="h-full w-full"
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  controls
-                />
-              )}
-
-              {mode === "player" && (
-                <Suspense fallback={<Spinner />}>
-                  <PlayerFallback ref={playerRef} />
-                </Suspense>
-              )}
-
-              {mode === "loading" && <Spinner />}
-
-              {mode !== "loading" && muted && (
-                <button
-                  onClick={toggleSound}
-                  className="absolute bottom-14 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-ink/85 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-bone backdrop-blur transition hover:bg-ink"
-                >
-                  <SoundOffIcon /> Tap for sound
-                </button>
-              )}
+            <div className="aspect-video w-full bg-black">
+              <Player
+                ref={playerRef}
+                component={DemoVideo}
+                inputProps={{ audioSrc: "/api/music" }}
+                durationInFrames={VIDEO.durationInFrames}
+                compositionWidth={VIDEO.width}
+                compositionHeight={VIDEO.height}
+                fps={VIDEO.fps}
+                style={{ width: "100%", height: "100%" }}
+                controls
+                autoPlay
+                loop
+              />
             </div>
           </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
-  );
-}
-
-function Spinner() {
-  return (
-    <div className="grid h-full place-items-center">
-      <Rowel className="h-8 w-8 animate-spin text-gold [animation-duration:1.4s]" />
-    </div>
-  );
-}
-function SoundOnIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
-      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 00-2.5-4v8a4.5 4.5 0 002.5-4z" />
-    </svg>
-  );
-}
-function SoundOffIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
-      <path d="M3 9v6h4l5 5V4L7 9H3z" />
-    </svg>
   );
 }
