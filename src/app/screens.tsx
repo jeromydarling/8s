@@ -6,6 +6,7 @@ import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { track } from "../lib/track";
 import { cn, Tag } from "../components/ui";
+import { AuthModal } from "../marketing/AuthModal";
 import { LazyRodeoMap } from "../components/LazyRodeoMap";
 import {
   Avatar,
@@ -418,6 +419,7 @@ export function BuckleScreen() {
 /* ================= TACK ROOM ================= */
 export function TackScreen() {
   const { data } = useDemo();
+  const { user, horses: myHorses, refresh } = useAuth();
   const [tab, setTab] = useState<"horses" | "runs">("horses");
   if (!data) return null;
   const riders = Object.fromEntries(data.contestants.map((c) => [c.id, c.firstName]));
@@ -432,6 +434,8 @@ export function TackScreen() {
           </button>
         ))}
       </div>
+
+      {tab === "horses" && <MyHorses user={!!user} horses={myHorses} onChange={refresh} />}
 
       {tab === "horses" ? (
         <Stagger>
@@ -480,6 +484,90 @@ export function TackScreen() {
     </div>
   );
 }
+
+function MyHorses({ user, horses, onChange }: { user: boolean; horses: import("../lib/auth").Horse[]; onChange: () => void }) {
+  const [authOpen, setAuthOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ name: "", breed: "", color: "", role: "" });
+  const [busy, setBusy] = useState(false);
+
+  async function add() {
+    if (!form.name.trim()) return;
+    setBusy(true);
+    try {
+      await api.addHorse(form);
+      track("horse_added");
+      setForm({ name: "", breed: "", color: "", role: "" });
+      setAdding(false);
+      onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function del(id: string) {
+    await api.remove("horse", id);
+    onChange();
+  }
+
+  if (!user) {
+    return (
+      <>
+        <Card className="mb-3 border-rust/25 bg-rust/[0.04]">
+          <div className="font-display font-bold text-ink">Add your own horses</div>
+          <div className="mt-1 text-xs text-ink/55">Sign in to build your real barn — farrier reminders, run log, vet records.</div>
+          <button onClick={() => setAuthOpen(true)} className="mt-3 w-full rounded-full bg-rust py-2.5 text-xs font-bold uppercase tracking-wider text-bone">
+            Make this your barn
+          </button>
+        </Card>
+        <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onAuthed={() => setAuthOpen(false)} intent="Build your barn" />
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-ink/40">Example barn</div>
+      </>
+    );
+  }
+
+  return (
+    <div className="mb-4">
+      {horses.length > 0 && (
+        <Stagger>
+          {horses.map((h) => (
+            <StaggerItem key={h.id}>
+              <Card className="flex items-center gap-3">
+                <Avatar seed={h.barn_name || h.name} name={h.barn_name || h.name} size={44} />
+                <div className="flex-1">
+                  <div className="font-display font-bold text-ink">{h.barn_name || h.name}</div>
+                  <div className="text-[11px] text-ink/50">{[h.color, h.breed, h.role].filter(Boolean).join(" · ") || "Your horse"}</div>
+                </div>
+                <button onClick={() => del(h.id)} className="text-ink/30 hover:text-rust" aria-label="Remove">✕</button>
+              </Card>
+            </StaggerItem>
+          ))}
+        </Stagger>
+      )}
+
+      {adding ? (
+        <Card className="mt-3">
+          <div className="grid grid-cols-2 gap-2">
+            <input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Barn name *" className={inputSm} />
+            <input value={form.breed} onChange={(e) => setForm({ ...form, breed: e.target.value })} placeholder="Breed" className={inputSm} />
+            <input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} placeholder="Color" className={inputSm} />
+            <input value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="Role (barrel mare…)" className={inputSm} />
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button onClick={add} disabled={busy} className="flex-1 rounded-full bg-rust py-2 text-xs font-bold uppercase tracking-wider text-bone disabled:opacity-50">{busy ? "Saving…" : "Save horse"}</button>
+            <button onClick={() => setAdding(false)} className="rounded-full bg-ink/8 px-4 py-2 text-xs font-semibold text-ink/60">Cancel</button>
+          </div>
+        </Card>
+      ) : (
+        <button onClick={() => setAdding(true)} className="mt-3 w-full rounded-2xl border border-dashed border-saddle/30 py-3 text-xs font-semibold uppercase tracking-widest text-ink/50 hover:border-rust hover:text-rust">
+          + Add a horse
+        </button>
+      )}
+      <div className="mt-5 mb-2 text-[11px] font-semibold uppercase tracking-widest text-ink/40">Example barn</div>
+    </div>
+  );
+}
+
+const inputSm = "rounded-lg border border-saddle/20 bg-paper/60 px-2.5 py-1.5 text-sm text-ink outline-none focus:border-rust";
 
 function Due({ label, days }: { label: string; days: number }) {
   const tone = days <= 7 ? "text-rust" : days <= 21 ? "text-gold" : "text-sage-deep";
