@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/fetch-art.mjs && tsc -b && vite build",
+    "build": "node scripts/fetch-art.mjs && node scripts/gen-seo.mjs && tsc -b && vite build",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
     "lint": "tsc -b --noEmit",

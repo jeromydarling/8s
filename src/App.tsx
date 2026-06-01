@@ -4,6 +4,7 @@ import { Rowel } from "./components/ui";
 
 const Home = lazy(() => import("./marketing/Home"));
 const DemoApp = lazy(() => import("./app/DemoApp"));
+const SubmitEvent = lazy(() => import("./marketing/SubmitEvent"));
 
 function Loader() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
     <Suspense fallback={<Loader />}>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/submit" element={<SubmitEvent />} />
         <Route path="/app/*" element={<DemoApp />} />
       </Routes>
     </Suspense>

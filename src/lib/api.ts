@@ -43,6 +43,24 @@ export const api = {
       mapboxToken: null,
       mapsEnabled: false,
     })),
+
+  addContestant: (c: Record<string, unknown>) =>
+    jsonFetch<{ ok: boolean; id: string }>("/api/contestants", { method: "POST", body: JSON.stringify(c) }),
+  addHorse: (h: Record<string, unknown>) =>
+    jsonFetch<{ ok: boolean; id: string }>("/api/horses", { method: "POST", body: JSON.stringify(h) }),
+  remove: (kind: "contestant" | "horse", id: string) =>
+    jsonFetch<{ ok: boolean }>(`/api/${kind}/${id}`, { method: "DELETE" }),
+  watch: (event_id: string, status?: string, force?: boolean) =>
+    jsonFetch<{ ok: boolean; watching: boolean }>("/api/watch", {
+      method: "POST",
+      body: JSON.stringify({ event_id, status, force }),
+    }),
+  subscribeAlerts: (sub: Record<string, unknown>) =>
+    jsonFetch<{ ok: boolean }>("/api/alerts/subscribe", { method: "POST", body: JSON.stringify(sub) }),
+  alerts: () => jsonFetch<{ alerts: Array<Record<string, unknown>> }>("/api/alerts").catch(() => ({ alerts: [] })),
+  markAlertsRead: () => jsonFetch<{ ok: boolean }>("/api/alerts/read", { method: "POST" }),
+  submitEvent: (e: Record<string, unknown>) =>
+    jsonFetch<{ ok: boolean }>("/api/submit-event", { method: "POST", body: JSON.stringify(e) }),
 };
 
 // Bump alongside ART_VERSION in worker/art.ts to bust cached imagery.

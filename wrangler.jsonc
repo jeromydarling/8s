@@ -13,7 +13,7 @@
     "enabled": true
   },
   "triggers": {
-    "crons": ["0 13 * * 1"]
+    "crons": ["0 13 * * *", "0 13 * * 1"]
   },
   "ai": {
     "binding": "AI"

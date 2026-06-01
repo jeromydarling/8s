@@ -1,8 +1,12 @@
 import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { DemoProvider, isUnlocked, useDemo } from "../lib/demo";
+import { DemoProvider, useDemo } from "../lib/demo";
+import { AuthProvider, useAuth } from "../lib/auth";
+import { track } from "../lib/track";
+import { api } from "../lib/api";
 import { cn, Rowel, Wordmark } from "../components/ui";
-import { DemoGate } from "../marketing/DemoGate";
+import { AuthModal } from "../marketing/AuthModal";
 import { TodayScreen, DrawScreen, BuckleScreen, TackScreen } from "./screens";
 import { MoreScreen, SponsorScreen, GatepostScreen, ImportScreen, BudgetScreen } from "./screens_more";
 
@@ -15,17 +19,24 @@ const TABS = [
 ];
 
 export default function DemoApp() {
-  if (!isUnlocked()) return <LockedScreen />;
+  useEffect(() => {
+    track("app_open");
+  }, []);
   return (
-    <DemoProvider>
-      <Shell />
-    </DemoProvider>
+    <AuthProvider>
+      <DemoProvider>
+        <Shell />
+      </DemoProvider>
+    </AuthProvider>
   );
 }
 
 function Shell() {
   const { loading, error } = useDemo();
   const location = useLocation();
+  useEffect(() => {
+    track("app_pageview", { path: location.pathname });
+  }, [location.pathname]);
   return (
     <div className="relative mx-auto flex min-h-[100svh] max-w-md flex-col bg-bone shadow-[0_0_80px_rgba(43,29,18,0.12)]">
       <TopBar />
@@ -63,15 +74,62 @@ function Shell() {
 }
 
 function TopBar() {
+  const { user, logout } = useAuth();
+  const [authOpen, setAuthOpen] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    if (!user) { setUnread(0); return; }
+    api.alerts().then((d) => setUnread((d.alerts ?? []).filter((a) => !(a as { read_at?: string }).read_at).length));
+  }, [user]);
+
+  const initial = (user?.name || user?.email || "8").charAt(0).toUpperCase();
+
   return (
     <div className="sticky top-0 z-20 flex items-center justify-between border-b border-saddle/12 bg-bone/85 px-4 py-3 backdrop-blur-md">
       <Wordmark className="scale-90 origin-left" />
       <div className="flex items-center gap-2">
-        <span className="rounded-full bg-gold/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-saddle">Demo</span>
-        <span className="grid h-8 w-8 place-items-center rounded-full bg-saddle font-display text-sm font-bold text-bone">H</span>
+        {user ? (
+          <>
+            <NavLink to="/app/more" className="relative grid h-8 w-8 place-items-center rounded-full bg-ink/5 text-ink/60" aria-label="Alerts">
+              <BellIcon className="h-4 w-4" />
+              {unread > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-rust px-1 text-[9px] font-bold text-bone">
+                  {unread}
+                </span>
+              )}
+            </NavLink>
+            <div className="relative">
+              <button onClick={() => setMenu((m) => !m)} className="grid h-8 w-8 place-items-center rounded-full bg-saddle font-display text-sm font-bold text-bone">
+                {initial}
+              </button>
+              {menu && (
+                <div className="absolute right-0 top-10 z-30 w-44 overflow-hidden rounded-xl border border-saddle/15 bg-bone shadow-lift">
+                  <div className="border-b border-saddle/10 px-3 py-2 text-[11px] text-ink/50">{user.email}</div>
+                  <button onClick={() => { setMenu(false); logout(); }} className="block w-full px-3 py-2 text-left text-sm text-ink/70 hover:bg-ink/5">
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <span className="rounded-full bg-gold/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-saddle">Preview</span>
+            <button onClick={() => setAuthOpen(true)} className="rounded-full bg-rust px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-bone">
+              Sign in
+            </button>
+          </>
+        )}
       </div>
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onAuthed={() => setAuthOpen(false)} intent="Make this your hub" />
     </div>
   );
+}
+
+function BellIcon({ className }: { className?: string }) {
+  return <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 }
 
 function BottomNav() {
@@ -110,19 +168,6 @@ function LoadingState() {
   return (
     <div className="grid place-items-center py-32">
       <Rowel className="h-9 w-9 animate-spin text-rust [animation-duration:1.4s]" />
-    </div>
-  );
-}
-
-function LockedScreen() {
-  return (
-    <div className="relative grid min-h-[100svh] place-items-center bg-leather p-4 text-bone">
-      <div className="absolute inset-0 grain dark-grain" />
-      <DemoGate open={true} onClose={() => (window.location.href = "/")} />
-      <div className="relative text-center opacity-60">
-        <Rowel className="mx-auto h-12 w-12 text-gold" />
-        <p className="mt-4 font-display uppercase tracking-widest">Unlocking the demo…</p>
-      </div>
     </div>
   );
 }

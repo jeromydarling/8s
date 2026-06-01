@@ -2,13 +2,17 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ImportResult } from "@shared/types";
 import { useDemo } from "../lib/demo";
+import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
+import { track } from "../lib/track";
 import { cn, Rowel, Tag } from "../components/ui";
+import { AuthModal } from "../marketing/AuthModal";
 import { LazyRodeoMap } from "../components/LazyRodeoMap";
 import { Avatar, Card, EmptyHint, ProgressBar, ScreenHeader, Stagger, StaggerItem, StatusDot } from "./widgets";
 
 /* ================= MORE ================= */
 export function MoreScreen() {
+  const { user } = useAuth();
   const items = [
     { to: "/app/sponsor", t: "The Sponsor Pen", d: "Media kit & sponsor tracking", emoji: "✨" },
     { to: "/app/gatepost", t: "The Gatepost", d: "Arena preservation advocacy", emoji: "📣" },
@@ -18,36 +22,123 @@ export function MoreScreen() {
   return (
     <div>
       <ScreenHeader eyebrow="More rooms" title="The whole barn" />
-      <Stagger>
-        {items.map((it) => (
-          <StaggerItem key={it.to}>
-            <Link to={it.to}>
-              <Card onClick={() => {}} className="flex items-center gap-4">
-                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-paper text-2xl">{it.emoji}</span>
-                <div className="flex-1">
-                  <div className="font-display text-lg font-bold text-ink">{it.t}</div>
-                  <div className="text-xs text-ink/50">{it.d}</div>
-                </div>
-                <span className="text-ink/30">›</span>
-              </Card>
-            </Link>
-          </StaggerItem>
-        ))}
-      </Stagger>
 
-      <Card className="mt-6 bg-leather text-bone">
-        <div className="flex items-center gap-3">
-          <Rowel className="h-8 w-8 text-gold" />
-          <div>
-            <div className="font-display font-bold">You're on Arena Pro</div>
-            <div className="text-xs text-bone/60">Unlimited kids, horses & sponsor tools</div>
+      <AlertsPanel />
+
+      <div className="mt-5">
+        <Stagger>
+          {items.map((it) => (
+            <StaggerItem key={it.to}>
+              <Link to={it.to}>
+                <Card onClick={() => {}} className="flex items-center gap-4">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-paper text-2xl">{it.emoji}</span>
+                  <div className="flex-1">
+                    <div className="font-display text-lg font-bold text-ink">{it.t}</div>
+                    <div className="text-xs text-ink/50">{it.d}</div>
+                  </div>
+                  <span className="text-ink/30">›</span>
+                </Card>
+              </Link>
+            </StaggerItem>
+          ))}
+        </Stagger>
+      </div>
+
+      {user && (
+        <Card className="mt-6 bg-leather text-bone">
+          <div className="flex items-center gap-3">
+            <Rowel className="h-8 w-8 text-gold" />
+            <div>
+              <div className="font-display font-bold">{user.name || "Your hub"}</div>
+              <div className="text-xs text-bone/60">{user.email}</div>
+            </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
       <Link to="/" className="mt-4 block text-center text-xs font-semibold uppercase tracking-widest text-ink/40">
         ← Back to 8s.rodeo
       </Link>
     </div>
+  );
+}
+
+/* Alerts feed + subscription — the core retention hook. */
+function AlertsPanel() {
+  const { user, alertSub, refresh } = useAuth();
+  const [authOpen, setAuthOpen] = useState(false);
+  const [alerts, setAlerts] = useState<Array<Record<string, unknown>>>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    api.alerts().then((d) => setAlerts(d.alerts ?? []));
+    api.markAlertsRead().catch(() => {});
+  }, [user]);
+
+  async function enable() {
+    setSaving(true);
+    try {
+      await api.subscribeAlerts({ email: user?.email, channels: ["email"], lead_days: 7 });
+      track("alerts_enabled");
+      await refresh();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!user) {
+    return (
+      <>
+        <Card className="border-rust/25 bg-rust/[0.04]">
+          <div className="flex items-center gap-3">
+            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-rust/12 text-xl">🔔</span>
+            <div className="flex-1">
+              <div className="font-display font-bold text-ink">Never miss a draw</div>
+              <div className="text-xs text-ink/55">Get deadline + draw alerts for the events you follow.</div>
+            </div>
+          </div>
+          <button onClick={() => setAuthOpen(true)} className="mt-3 w-full rounded-full bg-rust py-2.5 text-xs font-bold uppercase tracking-wider text-bone">
+            Turn on alerts (free)
+          </button>
+        </Card>
+        <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onAuthed={() => { setAuthOpen(false); enable(); }} intent="Turn on deadline alerts" />
+      </>
+    );
+  }
+
+  if (!alertSub) {
+    return (
+      <Card className="border-rust/25 bg-rust/[0.04]">
+        <div className="font-display font-bold text-ink">Turn on deadline alerts</div>
+        <div className="mt-1 text-xs text-ink/55">We'll email you before entries close on events in your watchlist.</div>
+        <button onClick={enable} disabled={saving} className="mt-3 w-full rounded-full bg-rust py-2.5 text-xs font-bold uppercase tracking-wider text-bone disabled:opacity-50">
+          {saving ? "Saving…" : "Enable alerts"}
+        </button>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="font-display font-bold text-ink">Your alerts</div>
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold text-sage-deep">
+          <span className="h-2 w-2 rounded-full bg-sage" /> On
+        </span>
+      </div>
+      {alerts.length === 0 ? (
+        <p className="text-xs text-ink/50">You're all set. We'll alert you here and by email as deadlines approach.</p>
+      ) : (
+        <div className="space-y-2">
+          {alerts.slice(0, 6).map((a) => (
+            <div key={String(a.id)} className="rounded-xl bg-paper/70 p-2.5">
+              <div className="text-[12px] font-semibold text-ink">{String(a.title)}</div>
+              <div className="text-[11px] text-ink/55">{String(a.body)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 

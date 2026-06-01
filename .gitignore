@@ -12,3 +12,6 @@ dist
 # build-time fetched curated art (regenerated each build from art-manifest.json)
 public/art/
 
+
+# generated SEO pages (built from live events each deploy)
+public/rodeos/

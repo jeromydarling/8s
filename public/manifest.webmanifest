@@ -1,0 +1,13 @@
+{
+  "name": "8 Seconds — Youth Rodeo Hub",
+  "short_name": "8 Seconds",
+  "description": "Every event, every qualifying ladder, every horse — and every arena worth fighting for.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#2b1d12",
+  "theme_color": "#2b1d12",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

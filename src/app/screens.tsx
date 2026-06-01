@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Discipline, RodeoEvent } from "@shared/types";
 import { useDemo, demoName } from "../lib/demo";
+import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
+import { track } from "../lib/track";
 import { cn, Tag } from "../components/ui";
 import { LazyRodeoMap } from "../components/LazyRodeoMap";
 import {
@@ -118,6 +120,7 @@ function milesFrom(a: { lat: number; lng: number }, b: { lat: number; lng: numbe
 
 export function DrawScreen() {
   const { data } = useDemo();
+  const { user, watchlist } = useAuth();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
   const [added, setAdded] = useState<Record<string, boolean>>({});
   const [view, setView] = useState<"list" | "map" | "plan">("list");
@@ -131,6 +134,19 @@ export function DrawScreen() {
       alive = false;
     };
   }, []);
+
+  // Seed "added" from the signed-in user's saved watchlist.
+  useEffect(() => {
+    if (watchlist.length) {
+      setAdded(Object.fromEntries(watchlist.map((w) => [w.event_id, true])));
+    }
+  }, [watchlist]);
+
+  function toggleEntry(eventId: string, currentlyAdded: boolean) {
+    setAdded((a) => ({ ...a, [eventId]: !currentlyAdded }));
+    track("event_enter_toggle", { event_id: eventId, entered: !currentlyAdded });
+    if (user) api.watch(eventId, "entered").catch(() => {});
+  }
 
   if (!data) return null;
 
@@ -229,7 +245,7 @@ export function DrawScreen() {
                     {e.drawPosted ? "✓ Draw posted" : d >= 0 ? `Entry closes in ${d}d` : "Entry closed"}
                   </span>
                   <button
-                    onClick={() => setAdded((a) => ({ ...a, [e.id]: !isAdded }))}
+                    onClick={() => toggleEntry(e.id, isAdded)}
                     className={cn(
                       "rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wide transition",
                       isAdded ? "bg-sage/15 text-sage-deep" : "bg-ink text-bone hover:bg-leather",

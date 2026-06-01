@@ -13,6 +13,11 @@ import {
   runSeedArenas,
 } from "./seed-events";
 import { music, musicStatus } from "./music";
+import {
+  signup, login, logout, me, addContestant, addHorse, deleteRecord,
+  toggleWatch, saveAlertSub, listAlerts, markAlertsRead, submitEvent, track,
+} from "./account";
+import { runAlerts } from "./alerts";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -27,6 +32,8 @@ export interface Env {
   MAPBOX_TOKEN?: string; // public pk.* token for Mapbox GL
   PERPLEXITY_API_KEY?: string; // secret, server-side seeding only
   ELEVEN_LABS_API_KEY?: string; // secret, demo-video music generation
+  SESSION_SECRET?: string; // secret, signs session cookies
+  RESEND_API_KEY?: string; // secret, alert email delivery (optional)
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -151,6 +158,27 @@ app.post("/api/admin/seed-arenas", (c) => seedArenas(c));
 app.get("/api/music/status", (c) => musicStatus(c));
 app.get("/api/music", (c) => music(c));
 
+// ---- Accounts & auth -------------------------------------------------------
+app.post("/api/auth/signup", (c) => signup(c));
+app.post("/api/auth/login", (c) => login(c));
+app.post("/api/auth/logout", (c) => logout(c));
+app.get("/api/me", (c) => me(c));
+
+// ---- User data -------------------------------------------------------------
+app.post("/api/contestants", (c) => addContestant(c));
+app.post("/api/horses", (c) => addHorse(c));
+app.delete("/api/:kind/:id", (c) => deleteRecord(c));
+app.post("/api/watch", (c) => toggleWatch(c));
+
+// ---- Alerts ----------------------------------------------------------------
+app.post("/api/alerts/subscribe", (c) => saveAlertSub(c));
+app.get("/api/alerts", (c) => listAlerts(c));
+app.post("/api/alerts/read", (c) => markAlertsRead(c));
+
+// ---- Supply side + analytics ----------------------------------------------
+app.post("/api/submit-event", (c) => submitEvent(c));
+app.post("/api/track", (c) => track(c));
+
 // ---- SPA fallback: hand everything else to static assets -------------------
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
@@ -159,23 +187,32 @@ const CRON_STATES = ["TX", "OK", "WY", "CO", "KS", "NM"];
 
 export default {
   fetch: app.fetch,
-  // Weekly Cron: refresh real events for key states + arenas. No-ops cleanly if
-  // PERPLEXITY_API_KEY / DB are missing.
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    if (!env.PERPLEXITY_API_KEY || !env.DB) return;
+  // Crons: daily (13:00 UTC) computes deadline alerts; weekly (Mon) also
+  // refreshes real events/arenas via Perplexity. No-ops cleanly without keys/DB.
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    if (!env.DB) return;
+    const isWeekly = event.cron === "0 13 * * 1";
     ctx.waitUntil(
       (async () => {
-        for (const state of CRON_STATES) {
+        if (isWeekly && env.PERPLEXITY_API_KEY) {
+          for (const state of CRON_STATES) {
+            try {
+              await runSeedEvents(env, state);
+            } catch (e) {
+              console.error("cron seed-events", state, e);
+            }
+          }
           try {
-            await runSeedEvents(env, state);
+            await runSeedArenas(env);
           } catch (e) {
-            console.error("cron seed-events", state, e);
+            console.error("cron seed-arenas", e);
           }
         }
+        // Alerts run every day (after any weekly reseed).
         try {
-          await runSeedArenas(env);
+          await runAlerts(env);
         } catch (e) {
-          console.error("cron seed-arenas", e);
+          console.error("cron alerts", e);
         }
       })(),
     );

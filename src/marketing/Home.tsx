@@ -1,9 +1,10 @@
 import { motion, useScroll, useTransform } from "framer-motion";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, artUrl } from "../lib/api";
+import { track } from "../lib/track";
 import { Button, Counter, Grain, Reveal, Rowel, Tag, Wordmark } from "../components/ui";
 import { LazyRodeoMap } from "../components/LazyRodeoMap";
-import { DemoGate } from "./DemoGate";
 
 const DemoVideoModal = lazy(() => import("./DemoVideoModal"));
 import {
@@ -16,10 +17,21 @@ import {
 } from "./MiniApp";
 
 export default function Home() {
-  const [gate, setGate] = useState(false);
   const [video, setVideo] = useState(false);
-  const openGate = () => setGate(true);
-  const openVideo = () => setVideo(true);
+  const navigate = useNavigate();
+  // Ungated: every "see the demo" CTA drops straight into the live preview.
+  const openGate = () => {
+    track("cta_open_app");
+    navigate("/app");
+  };
+  const openVideo = () => {
+    track("cta_watch_video");
+    setVideo(true);
+  };
+
+  useEffect(() => {
+    track("home_view");
+  }, []);
 
   return (
     <div className="relative bg-bone">
@@ -35,14 +47,35 @@ export default function Home() {
       <CommunitySection />
       <PricingSection onDemo={openGate} />
       <DemoBand onDemo={openGate} />
+      <SupplyCTA />
       <Footer />
-      <DemoGate open={gate} onClose={() => setGate(false)} />
       {video && (
         <Suspense fallback={null}>
           <DemoVideoModal open={video} onClose={() => setVideo(false)} />
         </Suspense>
       )}
     </div>
+  );
+}
+
+/* ============================ SUPPLY-SIDE CTA ============================ */
+function SupplyCTA() {
+  const navigate = useNavigate();
+  return (
+    <section className="relative border-t border-saddle/15 bg-paper py-16">
+      <Grain />
+      <div className="relative mx-auto flex max-w-3xl flex-col items-center gap-4 px-5 text-center">
+        <Tag tone="sage">Run a rodeo or association?</Tag>
+        <h2 className="font-display text-2xl font-bold text-ink md:text-3xl">Get your events in front of every family.</h2>
+        <p className="max-w-xl font-serif text-ink/65">
+          List your rodeos free. Families discover them, set deadline reminders, and show up entered — no more
+          chasing a Facebook post.
+        </p>
+        <Button onClick={() => { track("cta_submit_event"); navigate("/submit"); }} variant="outline" className="mt-1">
+          Submit an event →
+        </Button>
+      </div>
+    </section>
   );
 }
 
