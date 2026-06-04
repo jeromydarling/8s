@@ -19,6 +19,7 @@ import {
   verifyToken, resendVerification, requestReset, performReset,
 } from "./account";
 import { runAlerts } from "./alerts";
+import * as Sentry from "@sentry/cloudflare";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -36,6 +37,7 @@ export interface Env {
   SESSION_SECRET?: string; // secret, signs session cookies
   RESEND_API_KEY?: string; // secret, fallback email delivery (optional)
   EMAIL?: SendEmail; // Cloudflare Email Service send_email binding
+  SENTRY_DSN?: string; // secret, server-side Sentry DSN (worker + cron errors)
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -206,7 +208,7 @@ app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 // States to refresh on the weekly cron (highest youth-rodeo density).
 const CRON_STATES = ["TX", "OK", "WY", "CO", "KS", "NM"];
 
-export default {
+const handler = {
   fetch: app.fetch,
   // Crons: daily (13:00 UTC) computes deadline alerts; weekly (Mon) also
   // refreshes real events/arenas via Perplexity. No-ops cleanly without keys/DB.
@@ -239,3 +241,22 @@ export default {
     );
   },
 };
+
+// Wrap the FULL { fetch, scheduled } handler — not just the Hono app — so the
+// daily/weekly cron failures are captured too, not only request errors.
+// Federation-standard tags keep events comparable across the fleet; this
+// no-ops gracefully when SENTRY_DSN is unset (graceful degradation).
+export default Sentry.withSentry(
+  (env: Env) => ({
+    dsn: env.SENTRY_DSN,
+    tracesSampleRate: 0.1,
+    sendDefaultPii: false,
+    initialScope: {
+      tags: {
+        app_slug: "8seconds",
+        federation_phase: "pre-launch",
+      },
+    },
+  }),
+  handler,
+) satisfies ExportedHandler<Env>;

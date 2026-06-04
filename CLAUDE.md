@@ -36,6 +36,9 @@ See `README.md` for full architecture, schema, API, and provisioning.
   back to a fixed dev secret if unset (fine for preview, set before real users).
 - `RESEND_API_KEY` (secret, optional) — sends deadline-alert emails; without it,
   alerts still appear in-app and the cron logs intended sends.
+- `SENTRY_DSN` (secret, optional) — server-side Sentry DSN for the worker; captures
+  request + cron errors. Unset → Sentry no-ops. Client uses build-time
+  `VITE_SENTRY_DSN` (see `.env.example`).
 
 ## Crons
 
