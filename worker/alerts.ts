@@ -36,6 +36,13 @@ export async function runAlerts(env: Env): Promise<{ created: number; sent: numb
     const states = safeArr((sub as Record<string, unknown>).states);
     const disciplines = safeArr((sub as Record<string, unknown>).disciplines);
 
+    // Only email verified users (free plan must confirm; paid skips).
+    const u = (await db
+      .prepare("SELECT email_verified, plan FROM users WHERE id = ?")
+      .bind(userId)
+      .first()) as { email_verified: number; plan: string } | null;
+    const canEmail = !!u && (u.email_verified === 1 || (u.plan ?? "free") !== "free");
+
     // Events the user is watching are always in scope.
     const watch = await db.prepare("SELECT event_id FROM watchlist WHERE user_id = ?").bind(userId).all();
     const watched = new Set((watch.results ?? []).map((r) => String((r as Record<string, unknown>).event_id)));
@@ -71,7 +78,7 @@ export async function runAlerts(env: Env): Promise<{ created: number; sent: numb
       created++;
 
       const email = String((sub as Record<string, unknown>).email ?? "");
-      if (email && (await sendEmail(env, email, title, body))) {
+      if (canEmail && email && (await sendEmail(env, email, title, body))) {
         await db.prepare("UPDATE alerts SET sent_at = ? WHERE id = ?").bind(now(), id).run();
         sent++;
       }

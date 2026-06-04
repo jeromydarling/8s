@@ -14,6 +14,8 @@ export interface User {
   name?: string;
   role?: string;
   state?: string;
+  email_verified?: number;
+  plan?: string;
 }
 export interface Contestant {
   id: string;

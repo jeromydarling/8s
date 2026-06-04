@@ -5,6 +5,9 @@ import { Rowel } from "./components/ui";
 const Home = lazy(() => import("./marketing/Home"));
 const DemoApp = lazy(() => import("./app/DemoApp"));
 const SubmitEvent = lazy(() => import("./marketing/SubmitEvent"));
+const AuthPages = lazy(() => import("./marketing/AuthPages").then((m) => ({ default: m.VerifyPage })));
+const ResetPage = lazy(() => import("./marketing/AuthPages").then((m) => ({ default: m.ResetPage })));
+const ForgotPage = lazy(() => import("./marketing/AuthPages").then((m) => ({ default: m.ForgotPage })));
 
 function Loader() {
   return (
@@ -20,6 +23,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/submit" element={<SubmitEvent />} />
+        <Route path="/verify" element={<AuthPages />} />
+        <Route path="/reset" element={<ResetPage />} />
+        <Route path="/forgot" element={<ForgotPage />} />
         <Route path="/app/*" element={<DemoApp />} />
       </Routes>
     </Suspense>

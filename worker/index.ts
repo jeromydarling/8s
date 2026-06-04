@@ -16,6 +16,7 @@ import { music, musicStatus } from "./music";
 import {
   signup, login, logout, me, addContestant, addHorse, deleteRecord,
   toggleWatch, saveAlertSub, listAlerts, markAlertsRead, submitEvent, track,
+  verifyToken, resendVerification, requestReset, performReset,
 } from "./account";
 import { runAlerts } from "./alerts";
 
@@ -33,7 +34,8 @@ export interface Env {
   PERPLEXITY_API_KEY?: string; // secret, server-side seeding only
   ELEVEN_LABS_API_KEY?: string; // secret, demo-video music generation
   SESSION_SECRET?: string; // secret, signs session cookies
-  RESEND_API_KEY?: string; // secret, alert email delivery (optional)
+  RESEND_API_KEY?: string; // secret, fallback email delivery (optional)
+  EMAIL?: SendEmail; // Cloudflare Email Service send_email binding
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -163,6 +165,10 @@ app.post("/api/auth/signup", (c) => signup(c));
 app.post("/api/auth/login", (c) => login(c));
 app.post("/api/auth/logout", (c) => logout(c));
 app.get("/api/me", (c) => me(c));
+app.post("/api/auth/verify", (c) => verifyToken(c));
+app.post("/api/auth/resend-verification", (c) => resendVerification(c));
+app.post("/api/auth/request-reset", (c) => requestReset(c));
+app.post("/api/auth/reset", (c) => performReset(c));
 
 // ---- User data -------------------------------------------------------------
 app.post("/api/contestants", (c) => addContestant(c));

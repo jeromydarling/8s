@@ -8,13 +8,25 @@ import {
   sessionCookie,
   verifyPassword,
 } from "./auth";
+import { resetEmail, sendMail, verifyEmail, welcomeEmail } from "./email";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const now = () => new Date().toISOString();
 const uid = (p: string) => `${p}_${crypto.randomUUID().slice(0, 12)}`;
+const SITE = "https://8s.rodeo";
 
 function requireDB(c: Context<{ Bindings: Env }>): D1Database | null {
   return c.env.DB ?? null;
+}
+
+// Create a single-use token (verify | reset) in D1 with an expiry.
+async function mintToken(db: D1Database, userId: string, email: string, kind: "verify" | "reset", ttlMs: number): Promise<string> {
+  const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  await db
+    .prepare("INSERT INTO email_tokens (token,user_id,email,kind,expires_at,created_at) VALUES (?,?,?,?,?,?)")
+    .bind(token, userId, email, kind, new Date(Date.now() + ttlMs).toISOString(), now())
+    .run();
+  return token;
 }
 
 /* ---------------- Auth ---------------- */
@@ -40,9 +52,107 @@ export async function signup(c: Context<{ Bindings: Env }>): Promise<Response> {
     .bind(id, email, hash, salt, name, String(body.role ?? ""), String(body.state ?? ""), now())
     .run();
 
+  // Fire welcome + verification email (best-effort; never blocks signup).
+  c.executionCtx.waitUntil(
+    (async () => {
+      try {
+        const vt = await mintToken(db, id, email, "verify", 24 * 3600 * 1000);
+        const verify = verifyEmail(`${SITE}/verify?token=${vt}`);
+        await sendMail(c.env, { ...verify, to: email });
+        const wel = welcomeEmail(name);
+        await sendMail(c.env, { ...wel, to: email });
+      } catch (e) {
+        console.error("signup email", e);
+      }
+    })(),
+  );
+
   const token = await createSession(c.env, id);
   c.header("Set-Cookie", sessionCookie(token));
-  return c.json({ ok: true, user: { id, email, name } });
+  return c.json({ ok: true, user: { id, email, name, email_verified: 0 } });
+}
+
+/* ---------------- Email verification + password reset ---------------- */
+export async function verifyToken(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const db = requireDB(c);
+  if (!db) return c.json({ error: "unavailable" }, 503);
+  const token = c.req.query("token") ?? (await c.req.json().catch(() => ({}))).token;
+  if (!token) return c.json({ error: "Missing token" }, 400);
+  const row = (await db
+    .prepare("SELECT user_id, expires_at, used_at FROM email_tokens WHERE token = ? AND kind = 'verify'")
+    .bind(token)
+    .first()) as { user_id: string; expires_at: string; used_at: string | null } | null;
+  if (!row || row.used_at || new Date(row.expires_at) < new Date()) {
+    return c.json({ error: "This link is invalid or expired." }, 400);
+  }
+  await db.batch([
+    db.prepare("UPDATE users SET email_verified = 1 WHERE id = ?").bind(row.user_id),
+    db.prepare("UPDATE email_tokens SET used_at = ? WHERE token = ?").bind(now(), token),
+  ]);
+  return c.json({ ok: true });
+}
+
+export async function resendVerification(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const db = requireDB(c);
+  const userId = await currentUserId(c);
+  if (!db || !userId) return c.json({ error: "Not signed in" }, 401);
+  const u = (await db.prepare("SELECT email, email_verified FROM users WHERE id = ?").bind(userId).first()) as
+    | { email: string; email_verified: number }
+    | null;
+  if (!u) return c.json({ error: "Not found" }, 404);
+  if (u.email_verified) return c.json({ ok: true, already: true });
+  const vt = await mintToken(db, userId, u.email, "verify", 24 * 3600 * 1000);
+  const mail = verifyEmail(`${SITE}/verify?token=${vt}`);
+  await sendMail(c.env, { ...mail, to: u.email });
+  return c.json({ ok: true });
+}
+
+export async function requestReset(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const db = requireDB(c);
+  if (!db) return c.json({ error: "unavailable" }, 503);
+  const email = String((await c.req.json().catch(() => ({}))).email ?? "").trim().toLowerCase();
+  // Always return ok (don't leak which emails exist). Only send if found + not rate-limited.
+  if (EMAIL_RE.test(email)) {
+    const u = (await db.prepare("SELECT id FROM users WHERE email = ?").bind(email).first()) as { id: string } | null;
+    if (u) {
+      // Rate-limit: max 3 reset tokens per user per hour.
+      const recent = (await db
+        .prepare("SELECT COUNT(*) AS n FROM email_tokens WHERE user_id = ? AND kind = 'reset' AND created_at > ?")
+        .bind(u.id, new Date(Date.now() - 3600 * 1000).toISOString())
+        .first()) as { n: number } | null;
+      if (!recent || recent.n < 3) {
+        const t = await mintToken(db, u.id, email, "reset", 3600 * 1000);
+        const mail = resetEmail(`${SITE}/reset?token=${t}`);
+        c.executionCtx.waitUntil(sendMail(c.env, { ...mail, to: email }).then(() => undefined));
+      }
+    }
+  }
+  return c.json({ ok: true });
+}
+
+export async function performReset(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const db = requireDB(c);
+  if (!db) return c.json({ error: "unavailable" }, 503);
+  const body = await c.req.json().catch(() => ({}));
+  const token = String(body.token ?? "");
+  const password = String(body.password ?? "");
+  if (password.length < 8) return c.json({ error: "Password must be at least 8 characters." }, 422);
+  const row = (await db
+    .prepare("SELECT user_id, expires_at, used_at FROM email_tokens WHERE token = ? AND kind = 'reset'")
+    .bind(token)
+    .first()) as { user_id: string; expires_at: string; used_at: string | null } | null;
+  if (!row || row.used_at || new Date(row.expires_at) < new Date()) {
+    return c.json({ error: "This reset link is invalid or expired." }, 400);
+  }
+  const { hash, salt } = await hashPassword(password);
+  await db.batch([
+    db.prepare("UPDATE users SET pass_hash = ?, salt = ?, email_verified = 1 WHERE id = ?").bind(hash, salt, row.user_id),
+    db.prepare("UPDATE email_tokens SET used_at = ? WHERE token = ?").bind(now(), token),
+  ]);
+  // Sign them in.
+  const session = await createSession(c.env, row.user_id);
+  c.header("Set-Cookie", sessionCookie(session));
+  return c.json({ ok: true });
 }
 
 export async function login(c: Context<{ Bindings: Env }>): Promise<Response> {
@@ -73,7 +183,7 @@ export async function me(c: Context<{ Bindings: Env }>): Promise<Response> {
   const id = await currentUserId(c);
   if (!db || !id) return c.json({ user: null });
   const u = (await db
-    .prepare("SELECT id, email, name, role, state, home_lat, home_lng FROM users WHERE id = ?")
+    .prepare("SELECT id, email, name, role, state, home_lat, home_lng, email_verified, plan FROM users WHERE id = ?")
     .bind(id)
     .first()) as Record<string, unknown> | null;
   if (!u) return c.json({ user: null });

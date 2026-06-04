@@ -40,6 +40,7 @@ function Shell() {
   return (
     <div className="relative mx-auto flex min-h-[100svh] max-w-md flex-col bg-bone shadow-[0_0_80px_rgba(43,29,18,0.12)]">
       <TopBar />
+      <VerifyBanner />
       <main className="relative flex-1 px-4 pb-28 pt-4">
         {loading && <LoadingState />}
         {error && <div className="rounded-2xl bg-rust/10 p-4 text-sm text-rust">Couldn't load the demo: {error}</div>}
@@ -124,6 +125,37 @@ function TopBar() {
         )}
       </div>
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onAuthed={() => setAuthOpen(false)} intent="Make this your hub" />
+    </div>
+  );
+}
+
+// Free-plan users must verify their email; paid plans skip it.
+function VerifyBanner() {
+  const { user } = useAuth();
+  const [sent, setSent] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  if (!user || hidden) return null;
+  const isFree = (user.plan ?? "free") === "free";
+  if (!isFree || user.email_verified) return null;
+
+  async function resend() {
+    await fetch("/api/auth/resend-verification", { method: "POST" }).catch(() => {});
+    track("verify_resend");
+    setSent(true);
+  }
+
+  return (
+    <div className="flex items-center gap-3 border-b border-gold/30 bg-gold/15 px-4 py-2 text-[12px] text-ink/75">
+      <span className="text-base">✉️</span>
+      <span className="flex-1">
+        {sent ? "Sent — check your inbox to confirm your email." : "Confirm your email to turn on deadline alerts."}
+      </span>
+      {!sent && (
+        <button onClick={resend} className="shrink-0 font-semibold text-rust underline-offset-2 hover:underline">
+          Resend
+        </button>
+      )}
+      <button onClick={() => setHidden(true)} className="shrink-0 text-ink/40" aria-label="Dismiss">✕</button>
     </div>
   );
 }

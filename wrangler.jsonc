@@ -36,5 +36,10 @@
   "r2_buckets": [
     { "binding": "MEDIA", "bucket_name": "eight-seconds-media" },
     { "binding": "UPLOADS", "bucket_name": "eight-seconds-uploads" }
-  ]
+  ],
+  // Cloudflare Email Service — transactional send (verify/reset/welcome). No
+  // destination restriction so we can email any signed-up user. Requires Email
+  // Service enabled on the account + verified sending domain (8s.rodeo DKIM/SPF).
+  // email.ts falls back to logging until this binding + DNS are live.
+  "send_email": [{ "name": "EMAIL" }]
 }

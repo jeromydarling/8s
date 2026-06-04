@@ -104,6 +104,11 @@ export function AuthModal({
               >
                 {mode === "signup" ? "Already have an account? Sign in" : "New here? Create a free account"}
               </button>
+              {mode === "login" && (
+                <a href="/forgot" className="block text-center text-xs text-ink/40 underline-offset-4 hover:underline">
+                  Forgot your password?
+                </a>
+              )}
             </form>
           </motion.div>
         </motion.div>
