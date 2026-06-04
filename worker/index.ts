@@ -170,6 +170,21 @@ app.post("/api/auth/resend-verification", (c) => resendVerification(c));
 app.post("/api/auth/request-reset", (c) => requestReset(c));
 app.post("/api/auth/reset", (c) => performReset(c));
 
+// Token-guarded email smoke test: /api/admin/test-email?token=...&to=you@x.com
+app.get("/api/admin/test-email", async (c) => {
+  if (c.req.query("token") !== c.env.ART_INGEST_TOKEN) return c.json({ error: "forbidden" }, 403);
+  const to = c.req.query("to");
+  if (!to) return c.json({ error: "add &to=email" }, 400);
+  const { sendMailDebug } = await import("./email");
+  const r = await sendMailDebug(c.env, {
+    to,
+    subject: "8 Seconds — email test",
+    text: "If you can read this, transactional email is working. — 8 Seconds",
+    html: "<p>If you can read this, transactional email is working.</p><p>— 8 Seconds</p>",
+  });
+  return c.json(r);
+});
+
 // ---- User data -------------------------------------------------------------
 app.post("/api/contestants", (c) => addContestant(c));
 app.post("/api/horses", (c) => addHorse(c));

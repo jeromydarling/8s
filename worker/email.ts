@@ -1,3 +1,4 @@
+import { EmailMessage } from "cloudflare:email";
 import type { Env } from "./index";
 
 // Outbound transactional email. Targets Cloudflare Email Service (the EMAIL
@@ -6,6 +7,7 @@ import type { Env } from "./index";
 // provider here only.
 
 const FROM = "8 Seconds <noreply@8s.rodeo>";
+const FROM_ADDR = "noreply@8s.rodeo";
 const REPLY_TO = "gardener@thecros.app";
 
 export interface Mail {
@@ -15,18 +17,32 @@ export interface Mail {
   html?: string;
 }
 
+// Attempt a send and report exactly what happened (for the debug endpoint).
+export async function sendMailDebug(env: Env, mail: Mail): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = { hasBinding: !!env.EMAIL, hasResend: !!env.RESEND_API_KEY };
+  if (env.EMAIL) {
+    try {
+      const msg = new EmailMessage(FROM_ADDR, mail.to, buildMime(mail));
+      await env.EMAIL.send(msg);
+      out.via = "cloudflare-email-service";
+      out.ok = true;
+      return out;
+    } catch (err) {
+      out.cfError = String(err instanceof Error ? err.message : err);
+    }
+  }
+  out.ok = await sendMail(env, mail);
+  out.via = out.via ?? (out.ok ? "fallback" : "logged");
+  return out;
+}
+
 export async function sendMail(env: Env, mail: Mail): Promise<boolean> {
   // 1) Cloudflare Email Service binding (preferred).
-  const binding = (env as unknown as { EMAIL?: { send: (m: EmailMessage) => Promise<void> } }).EMAIL;
-  if (binding) {
+  if (env.EMAIL) {
     try {
-      const raw = buildMime(mail);
-      // EmailMessage is provided by the Workers runtime when the binding exists.
-      const Ctor = (globalThis as unknown as { EmailMessage?: new (from: string, to: string, raw: string) => EmailMessage }).EmailMessage;
-      if (Ctor) {
-        await binding.send(new Ctor("noreply@8s.rodeo", mail.to, raw));
-        return true;
-      }
+      const msg = new EmailMessage(FROM_ADDR, mail.to, buildMime(mail));
+      await env.EMAIL.send(msg);
+      return true;
     } catch (err) {
       console.error("[email] CF Email Service send failed", err);
     }
@@ -60,11 +76,6 @@ export async function sendMail(env: Env, mail: Mail): Promise<boolean> {
 }
 
 // Minimal RFC 5322 / multipart MIME builder (text + optional HTML).
-interface EmailMessage {
-  readonly from: string;
-  readonly to: string;
-}
-
 function buildMime(mail: Mail): string {
   const date = new Date().toUTCString();
   const headers = [
