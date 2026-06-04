@@ -133,6 +133,21 @@ function shell(heading: string, bodyHtml: string, cta?: { label: string; url: st
   </div></body></html>`;
 }
 
+// Single welcome-with-verify email sent on signup (one email, not two).
+export function welcomeVerifyEmail(name: string, url: string): Mail {
+  const n = name ? `, ${name}` : "";
+  return {
+    to: "",
+    subject: "Welcome to 8 Seconds — confirm your email",
+    text: `Glad you're here${n}.\n\nEvery event, every qualifying ladder, every horse — and every arena worth fighting for, all in one place. Follow the rodeos you're chasing and we'll make sure you never miss a draw.\n\nConfirm your email to turn on deadline alerts (link expires in 24 hours):\n${url}\n\nIf you didn't sign up, you can ignore this.\n\n— 8 Seconds · 8s.rodeo`,
+    html: shell(
+      `Glad you're here${n}.`,
+      `<p>Every event, every qualifying ladder, every horse — and every arena worth fighting for, in one place. Follow the rodeos you're chasing and we'll make sure you never miss a draw.</p><p>Confirm your email to turn on deadline alerts.</p><p style="color:#8a5a3b">This link expires in 24 hours.</p>`,
+      { label: "Confirm email", url },
+    ),
+  };
+}
+
 export function verifyEmail(url: string): Mail {
   return {
     to: "",

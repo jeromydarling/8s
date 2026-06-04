@@ -8,7 +8,7 @@ import {
   sessionCookie,
   verifyPassword,
 } from "./auth";
-import { resetEmail, sendMail, verifyEmail, welcomeEmail } from "./email";
+import { resetEmail, sendMail, verifyEmail, welcomeVerifyEmail } from "./email";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const now = () => new Date().toISOString();
@@ -52,15 +52,13 @@ export async function signup(c: Context<{ Bindings: Env }>): Promise<Response> {
     .bind(id, email, hash, salt, name, String(body.role ?? ""), String(body.state ?? ""), now())
     .run();
 
-  // Fire welcome + verification email (best-effort; never blocks signup).
+  // One welcome-with-verify email (best-effort; never blocks signup).
   c.executionCtx.waitUntil(
     (async () => {
       try {
         const vt = await mintToken(db, id, email, "verify", 24 * 3600 * 1000);
-        const verify = verifyEmail(`${SITE}/verify?token=${vt}`);
-        await sendMail(c.env, { ...verify, to: email });
-        const wel = welcomeEmail(name);
-        await sendMail(c.env, { ...wel, to: email });
+        const mail = welcomeVerifyEmail(name, `${SITE}/verify?token=${vt}`);
+        await sendMail(c.env, { ...mail, to: email });
       } catch (e) {
         console.error("signup email", e);
       }
