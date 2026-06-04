@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { DemoProvider, useDemo } from "../lib/demo";
 import { AuthProvider, useAuth } from "../lib/auth";
 import { track } from "../lib/track";
@@ -38,39 +38,76 @@ function Shell() {
     track("app_pageview", { path: location.pathname });
   }, [location.pathname]);
   return (
-    <div className="relative mx-auto flex min-h-[100svh] max-w-md flex-col bg-bone shadow-[0_0_80px_rgba(43,29,18,0.12)]">
-      <TopBar />
-      <VerifyBanner />
-      <main className="relative flex-1 px-4 pb-28 pt-4">
-        {loading && <LoadingState />}
-        {error && <div className="rounded-2xl bg-rust/10 p-4 text-sm text-rust">Couldn't load the demo: {error}</div>}
-        {!loading && !error && (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <Routes location={location}>
-                <Route path="/" element={<TodayScreen />} />
-                <Route path="/draw" element={<DrawScreen />} />
-                <Route path="/buckle" element={<BuckleScreen />} />
-                <Route path="/tack" element={<TackScreen />} />
-                <Route path="/more" element={<MoreScreen />} />
-                <Route path="/sponsor" element={<SponsorScreen />} />
-                <Route path="/gatepost" element={<GatepostScreen />} />
-                <Route path="/import" element={<ImportScreen />} />
-                <Route path="/budget" element={<BudgetScreen />} />
-                <Route path="*" element={<TodayScreen />} />
-              </Routes>
-            </motion.div>
-          </AnimatePresence>
-        )}
-      </main>
+    <div className="relative flex min-h-[100svh] flex-col bg-bone md:flex-row">
+      {/* Desktop: persistent left rail */}
+      <SideNav />
+
+      <div className="relative flex min-h-[100svh] flex-1 flex-col md:min-h-0">
+        <TopBar />
+        <VerifyBanner />
+        <main className="relative mx-auto w-full max-w-2xl flex-1 px-4 pb-28 pt-4 md:px-8 md:pb-12 md:pt-8">
+          {loading && <LoadingState />}
+          {error && <div className="rounded-2xl bg-rust/10 p-4 text-sm text-rust">Couldn't load the demo: {error}</div>}
+          {!loading && !error && (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <Routes location={location}>
+                  <Route path="/" element={<TodayScreen />} />
+                  <Route path="/draw" element={<DrawScreen />} />
+                  <Route path="/buckle" element={<BuckleScreen />} />
+                  <Route path="/tack" element={<TackScreen />} />
+                  <Route path="/more" element={<MoreScreen />} />
+                  <Route path="/sponsor" element={<SponsorScreen />} />
+                  <Route path="/gatepost" element={<GatepostScreen />} />
+                  <Route path="/import" element={<ImportScreen />} />
+                  <Route path="/budget" element={<BudgetScreen />} />
+                  <Route path="*" element={<TodayScreen />} />
+                </Routes>
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </main>
+      </div>
+
+      {/* Mobile: bottom tab bar */}
       <BottomNav />
     </div>
+  );
+}
+
+/* Desktop left rail — hidden on mobile (bottom nav takes over there). */
+function SideNav() {
+  return (
+    <aside className="sticky top-0 hidden h-[100svh] w-60 shrink-0 flex-col border-r border-saddle/12 bg-paper/50 px-3 py-5 md:flex">
+      <Wordmark className="mb-8 px-2" />
+      <nav className="flex flex-col gap-1">
+        {TABS.map((t) => (
+          <NavLink
+            key={t.to}
+            to={t.to}
+            end={t.end}
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition",
+                isActive ? "bg-rust/10 text-rust" : "text-ink/55 hover:bg-ink/5 hover:text-ink",
+              )
+            }
+          >
+            <t.icon className="h-5 w-5" />
+            {t.label}
+          </NavLink>
+        ))}
+      </nav>
+      <Link to="/" className="mt-auto px-3 text-[11px] font-semibold uppercase tracking-widest text-ink/35 hover:text-ink/60">
+        ← 8s.rodeo
+      </Link>
+    </aside>
   );
 }
 
@@ -88,8 +125,8 @@ function TopBar() {
   const initial = (user?.name || user?.email || "8").charAt(0).toUpperCase();
 
   return (
-    <div className="sticky top-0 z-20 flex items-center justify-between border-b border-saddle/12 bg-bone/85 px-4 py-3 backdrop-blur-md">
-      <Wordmark className="scale-90 origin-left" />
+    <div className="sticky top-0 z-20 flex items-center justify-between border-b border-saddle/12 bg-bone/85 px-4 py-3 backdrop-blur-md md:justify-end md:px-8">
+      <Wordmark className="scale-90 origin-left md:hidden" />
       <div className="flex items-center gap-2">
         {user ? (
           <>
@@ -166,7 +203,7 @@ function BellIcon({ className }: { className?: string }) {
 
 function BottomNav() {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md tap-safe">
+    <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-md tap-safe md:hidden">
       <div className="mx-3 mb-3 flex items-center justify-around rounded-2xl border border-saddle/15 bg-bone/95 px-1 py-1.5 shadow-lift backdrop-blur-md">
         {TABS.map((t) => (
           <NavLink

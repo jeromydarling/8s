@@ -147,7 +147,7 @@
   }
 
   .card {
-    background: var(--color-bone);
+    background-color: var(--color-bone);
     border: 1px solid color-mix(in srgb, var(--color-saddle) 18%, transparent);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-card);
