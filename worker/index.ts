@@ -16,7 +16,7 @@ import { music, musicStatus } from "./music";
 import {
   signup, login, logout, me, addContestant, addHorse, deleteRecord,
   toggleWatch, saveAlertSub, listAlerts, markAlertsRead, submitEvent, track,
-  verifyToken, resendVerification, requestReset, performReset,
+  verifyToken, resendVerification, requestReset, performReset, purgeUser,
 } from "./account";
 import { runAlerts } from "./alerts";
 import * as Sentry from "@sentry/cloudflare";
@@ -38,6 +38,7 @@ export interface Env {
   RESEND_API_KEY?: string; // secret, fallback email delivery (optional)
   EMAIL?: SendEmail; // Cloudflare Email Service send_email binding
   SENTRY_DSN?: string; // secret, server-side Sentry DSN (worker + cron errors)
+  EMAIL_VERIFICATION?: string; // "on" to require email verification (default off)
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -171,6 +172,10 @@ app.post("/api/auth/verify", (c) => verifyToken(c));
 app.post("/api/auth/resend-verification", (c) => resendVerification(c));
 app.post("/api/auth/request-reset", (c) => requestReset(c));
 app.post("/api/auth/reset", (c) => performReset(c));
+
+// Token-guarded test-user cleanup (E2E): /api/admin/purge-user?token=...&email=...
+app.post("/api/admin/purge-user", (c) => purgeUser(c));
+app.get("/api/admin/purge-user", (c) => purgeUser(c));
 
 // Token-guarded email smoke test: /api/admin/test-email?token=...&to=you@x.com
 app.get("/api/admin/test-email", async (c) => {

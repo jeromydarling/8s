@@ -8,7 +8,7 @@ import {
   sessionCookie,
   verifyPassword,
 } from "./auth";
-import { resetEmail, sendMail, verifyEmail, welcomeVerifyEmail } from "./email";
+import { resetEmail, sendMail, verifyEmail, welcomeEmail, welcomeVerifyEmail } from "./email";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const now = () => new Date().toISOString();
@@ -45,20 +45,27 @@ export async function signup(c: Context<{ Bindings: Env }>): Promise<Response> {
 
   const { hash, salt } = await hashPassword(password);
   const id = uid("u");
+  // Email verification is opt-in via the EMAIL_VERIFICATION="on" var. Off by
+  // default for now → users start verified and skip the confirm step.
+  const verifyOn = c.env.EMAIL_VERIFICATION === "on";
   await db
     .prepare(
-      "INSERT INTO users (id, email, pass_hash, salt, name, role, state, created_at) VALUES (?,?,?,?,?,?,?,?)",
+      "INSERT INTO users (id, email, pass_hash, salt, name, role, state, email_verified, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
     )
-    .bind(id, email, hash, salt, name, String(body.role ?? ""), String(body.state ?? ""), now())
+    .bind(id, email, hash, salt, name, String(body.role ?? ""), String(body.state ?? ""), verifyOn ? 0 : 1, now())
     .run();
 
-  // One welcome-with-verify email (best-effort; never blocks signup).
+  // Welcome email (+ verify link only when verification is on). Best-effort.
   c.executionCtx.waitUntil(
     (async () => {
       try {
-        const vt = await mintToken(db, id, email, "verify", 24 * 3600 * 1000);
-        const mail = welcomeVerifyEmail(name, `${SITE}/verify?token=${vt}`);
-        await sendMail(c.env, { ...mail, to: email });
+        if (verifyOn) {
+          const vt = await mintToken(db, id, email, "verify", 24 * 3600 * 1000);
+          const mail = welcomeVerifyEmail(name, `${SITE}/verify?token=${vt}`);
+          await sendMail(c.env, { ...mail, to: email });
+        } else {
+          await sendMail(c.env, { ...welcomeEmail(name), to: email });
+        }
       } catch (e) {
         console.error("signup email", e);
       }
@@ -67,7 +74,29 @@ export async function signup(c: Context<{ Bindings: Env }>): Promise<Response> {
 
   const token = await createSession(c.env, id);
   c.header("Set-Cookie", sessionCookie(token));
-  return c.json({ ok: true, user: { id, email, name, email_verified: 0 } });
+  return c.json({ ok: true, user: { id, email, name, email_verified: verifyOn ? 0 : 1 } });
+}
+
+/* ---------------- Test-user cleanup (token-guarded) ---------------- */
+// Deletes a user + all their rows by email. Used by E2E to keep D1 tidy.
+export async function purgeUser(c: Context<{ Bindings: Env }>): Promise<Response> {
+  if (c.req.query("token") !== c.env.ART_INGEST_TOKEN) return c.json({ error: "forbidden" }, 403);
+  const db = requireDB(c);
+  if (!db) return c.json({ error: "unavailable" }, 503);
+  const email = String(c.req.query("email") ?? "").trim().toLowerCase();
+  if (!email) return c.json({ error: "add &email=" }, 400);
+  const u = (await db.prepare("SELECT id FROM users WHERE email = ?").bind(email).first()) as { id: string } | null;
+  if (!u) return c.json({ ok: true, deleted: 0 });
+  await db.batch([
+    db.prepare("DELETE FROM contestants_u WHERE user_id = ?").bind(u.id),
+    db.prepare("DELETE FROM horses_u WHERE user_id = ?").bind(u.id),
+    db.prepare("DELETE FROM watchlist WHERE user_id = ?").bind(u.id),
+    db.prepare("DELETE FROM alert_subs WHERE user_id = ?").bind(u.id),
+    db.prepare("DELETE FROM alerts WHERE user_id = ?").bind(u.id),
+    db.prepare("DELETE FROM email_tokens WHERE user_id = ?").bind(u.id),
+    db.prepare("DELETE FROM users WHERE id = ?").bind(u.id),
+  ]);
+  return c.json({ ok: true, deleted: 1 });
 }
 
 /* ---------------- Email verification + password reset ---------------- */

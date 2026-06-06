@@ -12,10 +12,6 @@ on:
         description: "Base URL to test"
         required: true
         default: "https://8s.rodeo"
-      run_auth:
-        description: "Run the signup + persistence flow (creates throwaway accounts)?"
-        type: boolean
-        default: false
 
 jobs:
   e2e:
@@ -32,7 +28,7 @@ jobs:
       - name: Run E2E
         env:
           BASE_URL: ${{ github.event.inputs.base_url || 'https://8s.rodeo' }}
-          RUN_AUTH: ${{ github.event.inputs.run_auth == 'true' && '1' || '' }}
+          ART_INGEST_TOKEN: ${{ secrets.ART_INGEST_TOKEN || 'rowel-8s-ingest-a7f3c9e1' }}
         run: npx playwright test --project=desktop --project=mobile
       - name: Upload report
         if: ${{ !cancelled() }}
