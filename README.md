@@ -139,3 +139,5 @@ Warm paper + leather palette, animated paper grain, watercolor washes, an
 8-second ride-timer motif, scroll-reveal motion throughout, and a community voice
 of solidarity and belonging — the Great American West, never kitsch. Watercolor
 over photorealism by design.
+
+<!-- deploy-trigger: 2026-06-06T01:46:15Z (Sentry DSN bake-in) -->
