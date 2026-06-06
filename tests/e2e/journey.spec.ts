@@ -79,7 +79,7 @@ test("4. Draw — map + plan-trip views render", async () => {
 
   // Plan-trip view: the route summary with real mileage is the meaningful check.
   await page.getByRole("button", { name: "Plan trip", exact: true }).click();
-  await expect(page.getByText(/round-trip miles|rodeos this season/i)).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(/round-trip miles|rodeos this season/i).first()).toBeVisible({ timeout: 15000 });
 
   await page.getByRole("button", { name: "List", exact: true }).click();
   await expect(page.getByRole("button", { name: "Enter", exact: true }).or(page.getByRole("button", { name: /entered/i })).first()).toBeVisible();
