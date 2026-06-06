@@ -50,12 +50,16 @@ test("3. Draw — list, filter, enter an event (persists)", async () => {
   await page.goto("/app/draw");
   await expect(page.getByRole("heading", { name: /every event/i })).toBeVisible();
 
-  // Filter chips.
-  await page.getByRole("button", { name: /^Barrels$/ }).click().catch(() => {});
-  await page.getByRole("button", { name: /^All$/ }).click().catch(() => {});
+  // Exercise a discipline filter (non-fatal if that chip isn't present).
+  const barrels = page.getByRole("button", { name: "Barrels", exact: true });
+  if (await barrels.count()) {
+    await barrels.click();
+    await page.getByRole("button", { name: "All", exact: true }).click();
+  }
 
-  // Enter the first event.
-  const enter = page.getByRole("button", { name: /^enter$/i }).first();
+  // Enter the first event that isn't already entered.
+  const enter = page.getByRole("button", { name: "Enter", exact: true }).first();
+  await expect(enter).toBeVisible({ timeout: 15000 });
   await enter.click();
   await expect(page.getByRole("button", { name: /entered/i }).first()).toBeVisible();
 

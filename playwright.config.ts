@@ -18,6 +18,9 @@ export default defineConfig({
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
+    // Collapse CSS/framer-motion animations to instant (our CSS honors this) so
+    // elements settle immediately and clicks aren't blocked waiting for motion.
+    reducedMotion: "reduce",
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
