@@ -15,3 +15,8 @@ public/art/
 
 # generated SEO pages (built from live events each deploy)
 public/rodeos/
+
+# playwright
+playwright-report/
+test-results/
+/playwright/.cache/
