@@ -17,8 +17,9 @@ test("primary CTA drops into the ungated app (no email wall)", async ({ page }) 
   const cta = page.getByRole("button", { name: /see the (live )?demo|demo/i }).first();
   await cta.click();
   await expect(page).toHaveURL(/\/app/);
-  // The app shell renders its bottom/side nav.
-  await expect(page.getByText(/Today/i).first()).toBeVisible();
+  // App shell loaded — assert via the Today heading (present in both layouts),
+  // not the nav (the sidebar is hidden on mobile, the bottom bar on desktop).
+  await expect(page.getByRole("heading", { name: /howdy/i })).toBeVisible({ timeout: 15000 });
 });
 
 test("watch-the-tour opens the video modal", async ({ page }) => {
