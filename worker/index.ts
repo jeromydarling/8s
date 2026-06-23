@@ -19,6 +19,7 @@ import {
   verifyToken, resendVerification, requestReset, performReset, purgeUser,
 } from "./account";
 import { runAlerts } from "./alerts";
+import { getPlans, postCheckout, postWebhook } from "./billing";
 import * as Sentry from "@sentry/cloudflare";
 
 export interface Env {
@@ -39,6 +40,11 @@ export interface Env {
   EMAIL?: SendEmail; // Cloudflare Email Service send_email binding
   SENTRY_DSN?: string; // secret, server-side Sentry DSN (worker + cron errors)
   EMAIL_VERIFICATION?: string; // "on" to require email verification (default off)
+  STRIPE_SECRET_KEY?: string; // secret, Stripe API key (live)
+  STRIPE_WEBHOOK_SECRET?: string; // secret, Stripe webhook signing secret
+  STRIPE_PRICE_FAMILY?: string; // price_... for Arena Family $79/yr
+  STRIPE_PRICE_PRO?: string; // price_... for Arena Pro $19.99/mo
+  STRIPE_PRICE_ASSOCIATIONS?: string; // price_... for Associations $49/mo
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -208,6 +214,11 @@ app.post("/api/submit-event", (c) => submitEvent(c));
 app.post("/api/track", (c) => track(c));
 
 // ---- SPA fallback: hand everything else to static assets -------------------
+// ---- Stripe billing --------------------------------------------------------
+app.get("/api/billing/plans", (c) => getPlans(c));
+app.post("/api/billing/checkout", (c) => postCheckout(c));
+app.post("/api/billing/webhook", (c) => postWebhook(c));
+
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 // States to refresh on the weekly cron (highest youth-rodeo density).
