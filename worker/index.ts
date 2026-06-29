@@ -19,7 +19,7 @@ import {
   verifyToken, resendVerification, requestReset, performReset, purgeUser,
 } from "./account";
 import { runAlerts } from "./alerts";
-import { getPlans, postCheckout, postWebhook } from "./billing";
+import { getPlans, postCheckout, postPortal, postWebhook } from "./billing";
 import * as Sentry from "@sentry/cloudflare";
 
 export interface Env {
@@ -66,7 +66,11 @@ app.get("/api/health", (c) =>
 
 // ---- Public client config (Mapbox token etc.) -----------------------------
 app.get("/api/config", (c) =>
-  c.json({ mapboxToken: c.env.MAPBOX_TOKEN ?? null, mapsEnabled: !!c.env.MAPBOX_TOKEN }),
+  c.json({
+    mapboxToken: c.env.MAPBOX_TOKEN ?? null,
+    mapsEnabled: !!c.env.MAPBOX_TOKEN,
+    billingEnabled: !!c.env.STRIPE_SECRET_KEY,
+  }),
 );
 
 // ---- Fully seeded demo dataset ---------------------------------------------
@@ -217,6 +221,7 @@ app.post("/api/track", (c) => track(c));
 // ---- Stripe billing --------------------------------------------------------
 app.get("/api/billing/plans", (c) => getPlans(c));
 app.post("/api/billing/checkout", (c) => postCheckout(c));
+app.post("/api/billing/portal", (c) => postPortal(c));
 app.post("/api/billing/webhook", (c) => postWebhook(c));
 
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));

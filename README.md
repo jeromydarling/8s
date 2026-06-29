@@ -93,6 +93,10 @@ lead capture and write-back.
 | `POST` | `/api/leads` | Capture gated-demo lead (D1 → KV → log), sets demo cookie |
 | `POST` | `/api/import` | `{ text, filename }` → AI-synthesized records |
 | `GET` | `/api/art/:slug` | Watercolor image (FLUX → R2/cache → SVG fallback) |
+| `GET` | `/api/billing/plans` | Public plan labels + display prices |
+| `POST` | `/api/billing/checkout` | `{ plan }` → Stripe Checkout URL (subscription) |
+| `POST` | `/api/billing/portal` | Stripe billing-portal URL (manage/cancel) |
+| `POST` | `/api/billing/webhook` | Stripe events → sync `users.plan` in D1 |
 
 ## Local development
 

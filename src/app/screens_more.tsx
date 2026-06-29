@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ImportResult } from "@shared/types";
 import { useDemo } from "../lib/demo";
@@ -22,6 +22,8 @@ export function MoreScreen() {
   return (
     <div>
       <ScreenHeader eyebrow="More rooms" title="The whole barn" />
+
+      <BillingPanel />
 
       <AlertsPanel />
 
@@ -59,6 +61,148 @@ export function MoreScreen() {
         ← Back to 8s.rodeo
       </Link>
     </div>
+  );
+}
+
+/* Plan + Stripe billing. Upgrades go through Stripe Checkout; existing
+   subscribers manage/cancel through the Stripe billing portal. Also handles the
+   ?upgrade= deep link the marketing pricing page sends here. */
+const PLAN_LABEL: Record<string, string> = {
+  free: "Free",
+  family: "Arena Family",
+  pro: "Arena Pro",
+  associations: "Associations",
+};
+const PLAN_PRICE: Record<string, string> = { family: "$79/yr", pro: "$19.99/mo" };
+
+function BillingPanel() {
+  const { user, loading, refresh } = useAuth();
+  const [enabled, setEnabled] = useState(true);
+  const [busy, setBusy] = useState<string>("");
+  const [notice, setNotice] = useState<string>("");
+  const [authOpen, setAuthOpen] = useState(false);
+  const pendingPlan = useRef<"family" | "pro" | null>(null);
+  const handledQuery = useRef(false);
+
+  useEffect(() => {
+    api.config().then((c) => setEnabled(!!c.billingEnabled)).catch(() => {});
+  }, []);
+
+  async function startCheckout(plan: "family" | "pro") {
+    setBusy(plan);
+    setNotice("");
+    try {
+      const { url } = await api.checkout(plan);
+      window.location.href = url;
+    } catch (e) {
+      setNotice(String((e as Error).message ?? e));
+      setBusy("");
+    }
+  }
+
+  async function manage() {
+    setBusy("portal");
+    try {
+      const { url } = await api.billingPortal();
+      window.location.href = url;
+    } catch (e) {
+      setNotice(String((e as Error).message ?? e));
+      setBusy("");
+    }
+  }
+
+  // Resolve the ?upgrade= intent once: success/cancel notices, or auto-launch
+  // checkout for a chosen plan (opening the auth modal first if signed out).
+  useEffect(() => {
+    if (handledQuery.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const up = params.get("upgrade");
+    if (!up) return;
+
+    if (up === "success" || up === "cancel") {
+      handledQuery.current = true;
+      window.history.replaceState({}, "", "/app/more");
+      if (up === "success") {
+        setNotice("You're upgraded — welcome aboard. 🤠");
+        track("upgrade_success");
+        refresh();
+      } else {
+        setNotice("No worries — you can upgrade any time.");
+      }
+      return;
+    }
+    if (up === "family" || up === "pro") {
+      if (loading) return; // wait for /api/me so signed-in users skip the modal
+      handledQuery.current = true;
+      window.history.replaceState({}, "", "/app/more");
+      track("upgrade_intent", { plan: up });
+      if (user) startCheckout(up);
+      else {
+        pendingPlan.current = up;
+        setAuthOpen(true);
+      }
+    }
+  }, [user, loading, refresh]);
+
+  const plan = user?.plan ?? "free";
+  const isPaid = plan !== "free";
+
+  return (
+    <>
+      <Card className="mb-3 border-gold/30 bg-gradient-to-br from-leather to-ink text-bone">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Rowel className="h-7 w-7 text-gold" />
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-gold">Your plan</div>
+              <div className="font-display text-lg font-bold leading-none">{PLAN_LABEL[plan] ?? "Free"}</div>
+            </div>
+          </div>
+        </div>
+
+        {notice && <div className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-[12px] text-bone/90">{notice}</div>}
+
+        {!enabled ? (
+          <div className="mt-3 text-[12px] text-bone/65">Upgrades open soon — you're on the founding list.</div>
+        ) : isPaid ? (
+          <button
+            onClick={manage}
+            disabled={busy === "portal"}
+            className="mt-4 w-full rounded-full bg-bone py-2.5 text-xs font-bold uppercase tracking-wider text-ink transition hover:bg-white disabled:opacity-50"
+          >
+            {busy === "portal" ? "Opening…" : "Manage billing"}
+          </button>
+        ) : (
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {(["family", "pro"] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => (user ? startCheckout(p) : ((pendingPlan.current = p), setAuthOpen(true)))}
+                disabled={!!busy}
+                className={cn(
+                  "rounded-2xl px-3 py-3 text-left transition disabled:opacity-50",
+                  p === "family" ? "bg-gold text-ink hover:bg-gold/90" : "bg-white/10 text-bone hover:bg-white/15",
+                )}
+              >
+                <div className="font-display text-sm font-bold">{busy === p ? "Starting…" : PLAN_LABEL[p]}</div>
+                <div className={cn("text-[11px]", p === "family" ? "text-ink/70" : "text-bone/60")}>{PLAN_PRICE[p]}</div>
+              </button>
+            ))}
+          </div>
+        )}
+      </Card>
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onAuthed={() => {
+          setAuthOpen(false);
+          const p = pendingPlan.current;
+          pendingPlan.current = null;
+          if (p) startCheckout(p);
+        }}
+        intent="Create your account to upgrade"
+      />
+    </>
   );
 }
 

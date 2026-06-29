@@ -39,10 +39,17 @@ export const api = {
   },
 
   config: () =>
-    jsonFetch<{ mapboxToken: string | null; mapsEnabled: boolean }>("/api/config").catch(() => ({
+    jsonFetch<{ mapboxToken: string | null; mapsEnabled: boolean; billingEnabled: boolean }>("/api/config").catch(() => ({
       mapboxToken: null,
       mapsEnabled: false,
+      billingEnabled: false,
     })),
+
+  // Stripe Checkout: returns a hosted URL to redirect to. plan: "family" | "pro".
+  checkout: (plan: "family" | "pro") =>
+    jsonFetch<{ url: string }>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ plan }) }),
+  // Stripe billing portal (manage/cancel) for existing subscribers.
+  billingPortal: () => jsonFetch<{ url: string }>("/api/billing/portal", { method: "POST" }),
 
   addContestant: (c: Record<string, unknown>) =>
     jsonFetch<{ ok: boolean; id: string }>("/api/contestants", { method: "POST", body: JSON.stringify(c) }),

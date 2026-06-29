@@ -210,10 +210,15 @@ export async function me(c: Context<{ Bindings: Env }>): Promise<Response> {
   const id = await currentUserId(c);
   if (!db || !id) return c.json({ user: null });
   const u = (await db
-    .prepare("SELECT id, email, name, role, state, home_lat, home_lng, email_verified, plan FROM users WHERE id = ?")
+    .prepare(
+      "SELECT id, email, name, role, state, home_lat, home_lng, email_verified, plan, stripe_customer_id FROM users WHERE id = ?",
+    )
     .bind(id)
     .first()) as Record<string, unknown> | null;
   if (!u) return c.json({ user: null });
+  // Surface whether they have a billing account without leaking the customer id.
+  u.has_billing = u.stripe_customer_id ? 1 : 0;
+  delete u.stripe_customer_id;
   const [contestants, horses, watch, sub] = await Promise.all([
     db.prepare("SELECT * FROM contestants_u WHERE user_id = ? ORDER BY created_at").bind(id).all(),
     db.prepare("SELECT * FROM horses_u WHERE user_id = ? ORDER BY created_at").bind(id).all(),

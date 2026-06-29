@@ -617,10 +617,13 @@ function CommunitySection() {
 /* ============================ PRICING ============================ */
 function PricingSection({ onDemo }: { onDemo: () => void }) {
   const tiers = [
-    { name: "Free", price: "$0", note: "Every family", feats: ["The Draw event feed", "The Gatepost advocacy", "Basic horse profile"], cta: "Start free", hot: false },
-    { name: "Arena Family", price: "$79", per: "/yr", note: "Competitive families", feats: ["Unlimited kids + horses", "The Buckle Board", "The Tack Room + reminders", "Budget tracker"], cta: "Go Family", hot: true },
-    { name: "Arena Pro", price: "$19.99", per: "/mo", note: "Serious competitors", feats: ["Everything in Family", "The Sponsor Pen toolkit", "Media-kit generator", "Sponsor recap reports"], cta: "Go Pro", hot: false },
+    { name: "Free", price: "$0", note: "Every family", feats: ["The Draw event feed", "The Gatepost advocacy", "Basic horse profile"], cta: "Start free", hot: false, plan: null },
+    { name: "Arena Family", price: "$79", per: "/yr", note: "Competitive families", feats: ["Unlimited kids + horses", "The Buckle Board", "The Tack Room + reminders", "Budget tracker"], cta: "Go Family", hot: true, plan: "family" },
+    { name: "Arena Pro", price: "$19.99", per: "/mo", note: "Serious competitors", feats: ["Everything in Family", "The Sponsor Pen toolkit", "Media-kit generator", "Sponsor recap reports"], cta: "Go Pro", hot: false, plan: "pro" },
   ];
+  // Paid tiers hand off to the in-app upgrade flow (which has the auth context +
+  // Stripe Checkout); the free tier just opens the demo.
+  const pick = (plan: string | null) => (plan ? (window.location.href = `/app/more?upgrade=${plan}`) : onDemo());
   return (
     <section id="pricing" className="relative mx-auto max-w-6xl px-5 py-24 md:py-28">
       <Reveal className="text-center">
@@ -654,7 +657,7 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
                   </li>
                 ))}
               </ul>
-              <Button onClick={onDemo} variant={t.hot ? "bone" : "outline"} className="mt-7 w-full">{t.cta}</Button>
+              <Button onClick={() => pick(t.plan)} variant={t.hot ? "bone" : "outline"} className="mt-7 w-full">{t.cta}</Button>
             </div>
           </Reveal>
         ))}

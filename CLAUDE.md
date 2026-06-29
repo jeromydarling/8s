@@ -39,6 +39,18 @@ See `README.md` for full architecture, schema, API, and provisioning.
 - `SENTRY_DSN` (secret, optional) — server-side Sentry DSN for the worker; captures
   request + cron errors. Unset → Sentry no-ops. Client uses build-time
   `VITE_SENTRY_DSN` (see `.env.example`).
+- `STRIPE_SECRET_KEY` (secret, `sk_*`) — Stripe API key. Unset → `/api/billing/*`
+  return `billing_not_configured` (503) and the in-app upgrade card shows "opens
+  soon" (graceful degradation). `/api/config` reports `billingEnabled`.
+- `STRIPE_WEBHOOK_SECRET` (secret, `whsec_*`) — verifies `/api/billing/webhook`,
+  which updates `users.plan` from subscription metadata. Verification fails closed:
+  no entitlement is granted from an unsigned/forged POST.
+- `STRIPE_PRICE_FAMILY` / `STRIPE_PRICE_PRO` / `STRIPE_PRICE_ASSOCIATIONS` (vars,
+  `price_*`) — recurring price IDs for Arena Family ($79/yr), Arena Pro ($19.99/mo),
+  and Associations (from $49/mo). Checkout maps a plan id → price; the webhook maps
+  metadata → plan. Migration `0005_billing.sql` adds `users.stripe_customer_id`.
+  Billing surfaces in-app on `/app/more` (plan card + Stripe Checkout/portal); the
+  marketing pricing CTAs deep-link to `/app/more?upgrade=<plan>`.
 
 ## Crons
 

@@ -110,8 +110,8 @@ export async function postCheckout(c: Context<{ Bindings: Env }>): Promise<Respo
       customer: customerId,
       "line_items[0][price]": priceId,
       "line_items[0][quantity]": "1",
-      success_url: `${appUrl}/app/account?upgraded=1`,
-      cancel_url: `${appUrl}/pricing`,
+      success_url: `${appUrl}/app/more?upgrade=success`,
+      cancel_url: `${appUrl}/app/more?upgrade=cancel`,
       "metadata[user_id]": u.id,
       "metadata[plan]": plan,
       "metadata[app_slug]": "8seconds",
@@ -123,6 +123,38 @@ export async function postCheckout(c: Context<{ Bindings: Env }>): Promise<Respo
     });
     if (!session.url) return c.json({ error: "Stripe returned no URL" }, 502);
     return c.json({ url: session.url });
+  } catch (e) {
+    if (e instanceof StripeError) return c.json({ error: e.message }, (e.status as 400) || 500);
+    throw e;
+  }
+}
+
+// Opens the Stripe billing portal so an existing subscriber can update payment
+// details or cancel. Needs only the stored customer id (no plan metadata).
+export async function postPortal(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const db = c.env.DB;
+  if (!db) return c.json({ error: "unavailable" }, 503);
+
+  const userId = await currentUserId(c);
+  if (!userId) return c.json({ error: "Not signed in" }, 401);
+  if (!c.env.STRIPE_SECRET_KEY) {
+    return c.json({ error: "billing_not_configured" }, 503);
+  }
+
+  const u = (await db
+    .prepare("SELECT stripe_customer_id FROM users WHERE id = ?")
+    .bind(userId)
+    .first()) as { stripe_customer_id: string | null } | null;
+  if (!u?.stripe_customer_id) return c.json({ error: "No billing account yet." }, 400);
+
+  const appUrl = `https://${c.env.APP_DOMAIN || "8s.rodeo"}`;
+  try {
+    const portal = await stripe<{ url?: string }>(c.env, "billing_portal/sessions", {
+      customer: u.stripe_customer_id,
+      return_url: `${appUrl}/app/more`,
+    });
+    if (!portal.url) return c.json({ error: "Stripe returned no URL" }, 502);
+    return c.json({ url: portal.url });
   } catch (e) {
     if (e instanceof StripeError) return c.json({ error: e.message }, (e.status as 400) || 500);
     throw e;
