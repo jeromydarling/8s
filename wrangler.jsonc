@@ -21,7 +21,12 @@
   "vars": {
     "APP_NAME": "8 Seconds",
     "APP_DOMAIN": "8s.rodeo",
-    "ART_INGEST_TOKEN": "rowel-8s-ingest-a7f3c9e1"
+    "ART_INGEST_TOKEN": "rowel-8s-ingest-a7f3c9e1",
+    // Stripe recurring price IDs (live). Not secret — the secret key + webhook
+    // signing secret are set separately as Worker secrets.
+    "STRIPE_PRICE_FAMILY": "price_1TlX1FIuo9wd3dMd08bOSG3s",
+    "STRIPE_PRICE_PRO": "price_1TlX1FIuo9wd3dMd6fMaAFhO",
+    "STRIPE_PRICE_ASSOCIATIONS": "price_1TlX1GIuo9wd3dMdPgIX6Hg0"
   },
   "d1_databases": [
     {
