@@ -42,6 +42,26 @@ export async function stripe<T = Record<string, unknown>>(
   return body as T;
 }
 
+// GET variant for reads (subscriptions lookup, etc.). Query params are appended.
+export async function stripeGet<T = Record<string, unknown>>(
+  env: Env,
+  path: string,
+  query: Record<string, string> = {},
+): Promise<T> {
+  const key = env.STRIPE_SECRET_KEY;
+  if (!key) throw new StripeError("Stripe not configured", 503);
+  const qs = new URLSearchParams(query).toString();
+  const res = await fetch(`https://api.stripe.com/v1/${path}${qs ? `?${qs}` : ""}`, {
+    headers: { Authorization: `Bearer ${key}` },
+  });
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const msg = (body.error as { message?: string })?.message ?? `Stripe error ${res.status}`;
+    throw new StripeError(msg, res.status);
+  }
+  return body as T;
+}
+
 export async function verifyStripeWebhook(
   env: Env,
   payload: string,

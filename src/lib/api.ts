@@ -50,6 +50,12 @@ export const api = {
     jsonFetch<{ url: string }>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ plan }) }),
   // Stripe billing portal (manage/cancel) for existing subscribers.
   billingPortal: () => jsonFetch<{ url: string }>("/api/billing/portal", { method: "POST" }),
+  // Cancel-save: pause 30 days, or downgrade to Free at period end.
+  pauseBilling: () => jsonFetch<{ ok: boolean; paused_until: string }>("/api/billing/pause", { method: "POST" }),
+  downgradeBilling: () => jsonFetch<{ ok: boolean }>("/api/billing/downgrade", { method: "POST" }),
+  // Retention: the "Your Season" recap.
+  recap: () =>
+    jsonFetch<{ recap: null | Record<string, number | string> }>("/api/me/recap").catch(() => ({ recap: null })),
 
   addContestant: (c: Record<string, unknown>) =>
     jsonFetch<{ ok: boolean; id: string }>("/api/contestants", { method: "POST", body: JSON.stringify(c) }),

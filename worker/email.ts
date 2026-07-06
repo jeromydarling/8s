@@ -187,3 +187,28 @@ export function resetEmail(url: string): Mail {
     ),
   };
 }
+
+// Generic branded email for one-off CRM sends (admin → a single customer).
+export function brandedEmail(subject: string, bodyText: string): Mail {
+  const paras = bodyText
+    .split(/\n{2,}/)
+    .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  return { to: "", subject, text: bodyText, html: shell(subject, paras) };
+}
+
+// Monthly / season value recap — the retention hook. `lines` are plain strings.
+export function recapEmail(name: string, lines: string[], url: string): Mail {
+  const n = name ? `, ${name}` : "";
+  const list = lines.map((l) => `<li style="margin:6px 0">${l}</li>`).join("");
+  return {
+    to: "",
+    subject: "Your season with 8 Seconds",
+    text: `Here's your season so far${n}.\n\n${lines.map((l) => `- ${l}`).join("\n")}\n\nKeep going: ${url}\n\n— 8 Seconds`,
+    html: shell(
+      `Your season so far${n}.`,
+      `<p>Here's what your family has going on the hub:</p><ul style="padding-left:18px;margin:8px 0">${list}</ul>`,
+      { label: "Open your barn", url },
+    ),
+  };
+}

@@ -377,6 +377,14 @@ export async function track(c: Context<{ Bindings: Env }>): Promise<Response> {
   const b = await c.req.json().catch(() => ({}));
   const events: Array<Record<string, unknown>> = Array.isArray(b.events) ? b.events : [b];
   const userId = await currentUserId(c);
+  // Touch last-active for signed-in users so health scoring reflects real usage.
+  if (userId) {
+    try {
+      await db.prepare("UPDATE users SET last_active_at = ? WHERE id = ?").bind(now(), userId).run();
+    } catch {
+      /* non-fatal */
+    }
+  }
   try {
     const stmts = events.slice(0, 20).map((e) =>
       db

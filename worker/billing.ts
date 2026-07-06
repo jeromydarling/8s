@@ -15,7 +15,7 @@
 import type { Context } from "hono";
 import type { Env } from "./index";
 import { currentUserId } from "./auth";
-import { stripe, StripeError, verifyStripeWebhook } from "./stripe";
+import { stripe, stripeGet, StripeError, verifyStripeWebhook } from "./stripe";
 
 type PlanId = "family" | "pro" | "associations";
 
@@ -161,6 +161,71 @@ export async function postPortal(c: Context<{ Bindings: Env }>): Promise<Respons
   }
 }
 
+// Look up the customer id + their current active subscription. Returns nulls
+// (never throws for "no sub") so the cancel-save UI degrades cleanly.
+async function currentSub(
+  c: Context<{ Bindings: Env }>,
+): Promise<{ userId: string; customerId: string | null; subId: string | null } | null> {
+  const db = c.env.DB;
+  const userId = await currentUserId(c);
+  if (!db || !userId || !c.env.STRIPE_SECRET_KEY) return null;
+  const u = (await db.prepare("SELECT stripe_customer_id FROM users WHERE id = ?").bind(userId).first()) as
+    | { stripe_customer_id: string | null }
+    | null;
+  const customerId = u?.stripe_customer_id ?? null;
+  let subId: string | null = null;
+  if (customerId) {
+    const subs = await stripeGet<{ data?: Array<{ id: string }> }>(c.env, "subscriptions", {
+      customer: customerId,
+      status: "active",
+      limit: "1",
+    });
+    subId = subs.data?.[0]?.id ?? null;
+  }
+  return { userId, customerId, subId };
+}
+
+// Cancel-save option 1 — pause billing for 30 days instead of canceling. Keeps
+// the relationship; Stripe voids invoices during the pause and auto-resumes.
+export async function postPause(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const db = c.env.DB;
+  if (!db) return c.json({ error: "unavailable" }, 503);
+  const ctx = await currentSub(c);
+  if (!ctx) return c.json({ error: "Not signed in" }, 401);
+  if (!ctx.subId) return c.json({ error: "No active subscription to pause." }, 400);
+  const resumesAt = Math.floor((Date.now() + 30 * 86400_000) / 1000);
+  try {
+    await stripe(c.env, `subscriptions/${ctx.subId}`, {
+      "pause_collection[behavior]": "void",
+      "pause_collection[resumes_at]": String(resumesAt),
+    });
+  } catch (e) {
+    if (e instanceof StripeError) return c.json({ error: e.message }, (e.status as 400) || 500);
+    throw e;
+  }
+  const until = new Date(resumesAt * 1000).toISOString();
+  await db.prepare("UPDATE users SET plan_status = 'paused', paused_until = ? WHERE id = ?").bind(until, ctx.userId).run();
+  return c.json({ ok: true, paused_until: until });
+}
+
+// Cancel-save option 2 — downgrade to Free at period end. They keep everything
+// they paid for until the renewal date; the webhook flips plan on deletion.
+export async function postDowngrade(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const db = c.env.DB;
+  if (!db) return c.json({ error: "unavailable" }, 503);
+  const ctx = await currentSub(c);
+  if (!ctx) return c.json({ error: "Not signed in" }, 401);
+  if (!ctx.subId) return c.json({ error: "No active subscription." }, 400);
+  try {
+    await stripe(c.env, `subscriptions/${ctx.subId}`, { cancel_at_period_end: "true" });
+  } catch (e) {
+    if (e instanceof StripeError) return c.json({ error: e.message }, (e.status as 400) || 500);
+    throw e;
+  }
+  await db.prepare("UPDATE users SET plan_status = 'canceling' WHERE id = ?").bind(ctx.userId).run();
+  return c.json({ ok: true });
+}
+
 // Stripe → us. Verifies signature (fails closed), then updates user plan based
 // on session/subscription metadata. Never grants entitlement without a verified
 // signature. checkout.session.completed marks the upgrade; subscription.deleted
@@ -182,6 +247,13 @@ export async function postWebhook(c: Context<{ Bindings: Env }>): Promise<Respon
   const obj = (event.data as { object: Record<string, unknown> })?.object ?? {};
   const meta = (obj.metadata as Record<string, string>) ?? {};
 
+  // Subscription events also carry status + renewal date; keep those in sync so
+  // the CRM and the in-app plan card reflect reality (past_due, paused, renewal).
+  const status = obj.status as string | undefined;
+  const periodEnd = (obj.current_period_end as number | undefined) ??
+    ((obj.items as { data?: Array<{ current_period_end?: number }> })?.data?.[0]?.current_period_end);
+  const renewsAt = periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
+
   if (
     type === "checkout.session.completed" ||
     type === "customer.subscription.created" ||
@@ -190,12 +262,20 @@ export async function postWebhook(c: Context<{ Bindings: Env }>): Promise<Respon
     const userId = meta.user_id;
     const plan = meta.plan;
     if (userId && plan && plan in PLANS) {
-      await db.prepare("UPDATE users SET plan = ? WHERE id = ?").bind(plan, userId).run();
+      await db
+        .prepare(
+          "UPDATE users SET plan = ?, plan_status = COALESCE(?, plan_status), plan_renews_at = COALESCE(?, plan_renews_at), lifecycle = CASE WHEN lifecycle = 'churned' THEN 'won_back' ELSE lifecycle END WHERE id = ?",
+        )
+        .bind(plan, status ?? null, renewsAt, userId)
+        .run();
     }
   } else if (type === "customer.subscription.deleted") {
     const userId = meta.user_id;
     if (userId) {
-      await db.prepare("UPDATE users SET plan = 'free' WHERE id = ?").bind(userId).run();
+      await db
+        .prepare("UPDATE users SET plan = 'free', plan_status = 'canceled', lifecycle = 'churned' WHERE id = ?")
+        .bind(userId)
+        .run();
     }
   }
 

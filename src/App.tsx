@@ -4,6 +4,7 @@ import { Rowel } from "./components/ui";
 
 const Home = lazy(() => import("./marketing/Home"));
 const DemoApp = lazy(() => import("./app/DemoApp"));
+const AdminApp = lazy(() => import("./admin/AdminApp"));
 const SubmitEvent = lazy(() => import("./marketing/SubmitEvent"));
 const AuthPages = lazy(() => import("./marketing/AuthPages").then((m) => ({ default: m.VerifyPage })));
 const ResetPage = lazy(() => import("./marketing/AuthPages").then((m) => ({ default: m.ResetPage })));
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="/reset" element={<ResetPage />} />
         <Route path="/forgot" element={<ForgotPage />} />
         <Route path="/app/*" element={<DemoApp />} />
+        <Route path="/admin/*" element={<AdminApp />} />
       </Routes>
     </Suspense>
   );

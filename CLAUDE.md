@@ -50,12 +50,34 @@ See `README.md` for full architecture, schema, API, and provisioning.
   and Associations (from $49/mo). Checkout maps a plan id → price; the webhook maps
   metadata → plan. Migration `0005_billing.sql` adds `users.stripe_customer_id`.
   Billing surfaces in-app on `/app/more` (plan card + Stripe Checkout/portal); the
-  marketing pricing CTAs deep-link to `/app/more?upgrade=<plan>`.
+  marketing pricing CTAs deep-link to `/app/more?upgrade=<plan>`. Cancel-save
+  (`/api/billing/pause`, `/api/billing/downgrade`) offers pause / downgrade before
+  a Stripe cancel.
+- `ADMIN_EMAILS` (var) — comma-separated allowlist of emails that can reach the
+  super-admin CRM at `/admin`. Every `/api/admin/crm/*` route checks the signed-in
+  user's email against it (reuses the session cookie; no separate admin password).
+  Unset → nobody has CRM access. Migration `0006_crm.sql` adds the CRM/retention
+  tables (customer_messages, customer_tags, admin_tasks) + user health/lifecycle
+  columns + `leads.stage`.
+
+## Retention + CRM
+
+- **Retention:** per-account `health_score` + `lifecycle` (recomputed daily in
+  `worker/health.ts`); an in-app "Your Season" value recap (`/api/me/recap`,
+  `worker/retention.ts`) with a monthly recap email; and an in-app cancel-save flow
+  (pause / downgrade / talk-to-a-human) before Stripe's cancel.
+- **CRM (`/admin`):** email-allowlist–gated super-admin app — dashboard (MRR/ARR/
+  churn/plan mix/signups), searchable customer list + human-first profile drawer
+  (roster, timeline, send email/note, tags, lifecycle), at-risk churn radar, a
+  Mapbox map of customers (home coords → state centroid fallback), a lead-inbox
+  pipeline, and follow-up tasks. Backend in `worker/admin.ts`.
 
 ## Crons
 
-- Daily `0 13 * * *` — compute deadline alerts (`worker/alerts.ts`).
+- Daily `0 13 * * *` — compute deadline alerts (`worker/alerts.ts`) + recompute
+  customer health scores (`worker/health.ts`).
 - Weekly `0 13 * * 1` — also reseed real events/arenas via Perplexity.
+- Monthly `0 14 1 * *` — email the "Your Season" recap (`worker/retention.ts`).
 - On-demand: GitHub Actions "Seed real rodeo data" workflow (manual button).
 
 ## Product surfaces

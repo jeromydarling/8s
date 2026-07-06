@@ -81,12 +81,45 @@ function BillingPanel() {
   const [busy, setBusy] = useState<string>("");
   const [notice, setNotice] = useState<string>("");
   const [authOpen, setAuthOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
   const pendingPlan = useRef<"family" | "pro" | null>(null);
   const handledQuery = useRef(false);
 
   useEffect(() => {
     api.config().then((c) => setEnabled(!!c.billingEnabled)).catch(() => {});
   }, []);
+
+  async function pause() {
+    setBusy("pause");
+    setNotice("");
+    try {
+      const { paused_until } = await api.pauseBilling();
+      setNotice(`Paused — billing resumes ${new Date(paused_until).toLocaleDateString()}. Your season's still here.`);
+      setSaveOpen(false);
+      track("billing_paused");
+      await refresh();
+    } catch (e) {
+      setNotice(String((e as Error).message ?? e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function downgrade() {
+    setBusy("downgrade");
+    setNotice("");
+    try {
+      await api.downgradeBilling();
+      setNotice("Set to switch to Free at your renewal date — you keep everything until then.");
+      setSaveOpen(false);
+      track("billing_downgraded");
+      await refresh();
+    } catch (e) {
+      setNotice(String((e as Error).message ?? e));
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function startCheckout(plan: "family" | "pro") {
     setBusy(plan);
@@ -165,13 +198,49 @@ function BillingPanel() {
         {!enabled ? (
           <div className="mt-3 text-[12px] text-bone/65">Upgrades open soon — you're on the founding list.</div>
         ) : isPaid ? (
-          <button
-            onClick={manage}
-            disabled={busy === "portal"}
-            className="mt-4 w-full rounded-full bg-bone py-2.5 text-xs font-bold uppercase tracking-wider text-ink transition hover:bg-white disabled:opacity-50"
-          >
-            {busy === "portal" ? "Opening…" : "Manage billing"}
-          </button>
+          <div className="mt-4">
+            {!saveOpen ? (
+              <button
+                onClick={() => setSaveOpen(true)}
+                className="w-full rounded-full bg-bone py-2.5 text-xs font-bold uppercase tracking-wider text-ink transition hover:bg-white"
+              >
+                Manage plan
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-[11px] text-bone/70">
+                  Before you go — is one of these easier than canceling?
+                </div>
+                <button
+                  onClick={pause}
+                  disabled={!!busy}
+                  className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-left transition hover:bg-white/15 disabled:opacity-50"
+                >
+                  <div className="text-sm font-bold text-bone">{busy === "pause" ? "Pausing…" : "Pause for 30 days"}</div>
+                  <div className="text-[11px] text-bone/60">Take a breather. No charges while paused; nothing's lost.</div>
+                </button>
+                <button
+                  onClick={downgrade}
+                  disabled={!!busy}
+                  className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-left transition hover:bg-white/15 disabled:opacity-50"
+                >
+                  <div className="text-sm font-bold text-bone">{busy === "downgrade" ? "Saving…" : "Switch to Free at renewal"}</div>
+                  <div className="text-[11px] text-bone/60">Keep everything you paid for until your renewal date.</div>
+                </button>
+                <button
+                  onClick={manage}
+                  disabled={!!busy}
+                  className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-left transition hover:bg-white/15 disabled:opacity-50"
+                >
+                  <div className="text-sm font-bold text-bone">{busy === "portal" ? "Opening…" : "Update card / cancel"}</div>
+                  <div className="text-[11px] text-bone/60">Manage payment or cancel in Stripe.</div>
+                </button>
+                <div className="pt-1 text-center text-[11px] text-bone/55">
+                  Stuck on something? Reply to any 8 Seconds email — a real person answers.
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="mt-4 grid grid-cols-2 gap-2">
             {(["family", "pro"] as const).map((p) => (

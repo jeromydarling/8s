@@ -19,7 +19,13 @@ import {
   verifyToken, resendVerification, requestReset, performReset, purgeUser,
 } from "./account";
 import { runAlerts } from "./alerts";
-import { getPlans, postCheckout, postPortal, postWebhook } from "./billing";
+import { getPlans, postCheckout, postPortal, postWebhook, postPause, postDowngrade } from "./billing";
+import { getRecap, runMonthlyRecaps } from "./retention";
+import { runHealthScoring } from "./health";
+import {
+  crmMe, crmCustomers, crmCustomer, crmMessage, crmTag, crmLifecycle, crmMap, crmMetrics,
+  crmAtRisk, crmTasks, crmCreateTask, crmToggleTask, crmLeads, crmLeadStage,
+} from "./admin";
 import * as Sentry from "@sentry/cloudflare";
 
 export interface Env {
@@ -45,6 +51,7 @@ export interface Env {
   STRIPE_PRICE_FAMILY?: string; // price_... for Arena Family $79/yr
   STRIPE_PRICE_PRO?: string; // price_... for Arena Pro $19.99/mo
   STRIPE_PRICE_ASSOCIATIONS?: string; // price_... for Associations $49/mo
+  ADMIN_EMAILS?: string; // comma-separated allowlist for the /admin CRM
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -217,13 +224,35 @@ app.post("/api/alerts/read", (c) => markAlertsRead(c));
 app.post("/api/submit-event", (c) => submitEvent(c));
 app.post("/api/track", (c) => track(c));
 
-// ---- SPA fallback: hand everything else to static assets -------------------
 // ---- Stripe billing --------------------------------------------------------
 app.get("/api/billing/plans", (c) => getPlans(c));
 app.post("/api/billing/checkout", (c) => postCheckout(c));
 app.post("/api/billing/portal", (c) => postPortal(c));
+app.post("/api/billing/pause", (c) => postPause(c));
+app.post("/api/billing/downgrade", (c) => postDowngrade(c));
 app.post("/api/billing/webhook", (c) => postWebhook(c));
 
+// ---- Retention: the in-app "Your Season" recap -----------------------------
+app.get("/api/me/recap", (c) => getRecap(c));
+
+// ---- Super-admin CRM (email-allowlist gated inside each handler) ------------
+app.get("/api/admin/crm/me", (c) => crmMe(c));
+app.get("/api/admin/crm/customers", (c) => crmCustomers(c));
+app.get("/api/admin/crm/at-risk", (c) => crmAtRisk(c));
+app.get("/api/admin/crm/map", (c) => crmMap(c));
+app.get("/api/admin/crm/metrics", (c) => crmMetrics(c));
+app.get("/api/admin/crm/customer/:id", (c) => crmCustomer(c));
+app.post("/api/admin/crm/customer/:id/message", (c) => crmMessage(c));
+app.post("/api/admin/crm/customer/:id/tags", (c) => crmTag(c));
+app.delete("/api/admin/crm/customer/:id/tags", (c) => crmTag(c));
+app.post("/api/admin/crm/customer/:id/lifecycle", (c) => crmLifecycle(c));
+app.get("/api/admin/crm/tasks", (c) => crmTasks(c));
+app.post("/api/admin/crm/tasks", (c) => crmCreateTask(c));
+app.patch("/api/admin/crm/task/:id", (c) => crmToggleTask(c));
+app.get("/api/admin/crm/leads", (c) => crmLeads(c));
+app.patch("/api/admin/crm/lead/:id", (c) => crmLeadStage(c));
+
+// ---- SPA fallback: hand everything else to static assets -------------------
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 // States to refresh on the weekly cron (highest youth-rodeo density).
@@ -231,13 +260,23 @@ const CRON_STATES = ["TX", "OK", "WY", "CO", "KS", "NM"];
 
 const handler = {
   fetch: app.fetch,
-  // Crons: daily (13:00 UTC) computes deadline alerts; weekly (Mon) also
-  // refreshes real events/arenas via Perplexity. No-ops cleanly without keys/DB.
+  // Crons: daily (13:00 UTC) computes deadline alerts + recomputes customer
+  // health; weekly (Mon) also refreshes real events/arenas via Perplexity;
+  // monthly (1st, 14:00 UTC) emails the "Your Season" recap. No-ops without keys/DB.
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
     if (!env.DB) return;
     const isWeekly = event.cron === "0 13 * * 1";
+    const isMonthly = event.cron === "0 14 1 * *";
     ctx.waitUntil(
       (async () => {
+        if (isMonthly) {
+          try {
+            await runMonthlyRecaps(env);
+          } catch (e) {
+            console.error("cron recaps", e);
+          }
+          return;
+        }
         if (isWeekly && env.PERPLEXITY_API_KEY) {
           for (const state of CRON_STATES) {
             try {
@@ -252,11 +291,16 @@ const handler = {
             console.error("cron seed-arenas", e);
           }
         }
-        // Alerts run every day (after any weekly reseed).
+        // Alerts + health scoring run every day (after any weekly reseed).
         try {
           await runAlerts(env);
         } catch (e) {
           console.error("cron alerts", e);
+        }
+        try {
+          await runHealthScoring(env);
+        } catch (e) {
+          console.error("cron health", e);
         }
       })(),
     );

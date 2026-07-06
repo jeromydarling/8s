@@ -5,7 +5,7 @@ import { useDemo, demoName } from "../lib/demo";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { track } from "../lib/track";
-import { cn, Tag } from "../components/ui";
+import { cn, Rowel, Tag } from "../components/ui";
 import { AuthModal } from "../marketing/AuthModal";
 import { LazyRodeoMap } from "../components/LazyRodeoMap";
 import {
@@ -19,6 +19,50 @@ import {
   StaggerItem,
   StatusDot,
 } from "./widgets";
+
+/* Your Season — a signed-in family's own value recap (retention hook). Renders
+   only once they have real data, so it never shows an empty/sad state. */
+function SeasonRecapCard() {
+  const { user } = useAuth();
+  const [recap, setRecap] = useState<Record<string, number | string> | null>(null);
+  useEffect(() => {
+    if (!user) {
+      setRecap(null);
+      return;
+    }
+    api.recap().then((d) => setRecap(d.recap));
+  }, [user]);
+  if (!user || !recap) return null;
+  const has = Number(recap.kids) + Number(recap.horses) + Number(recap.following) > 0;
+  if (!has) return null;
+  const tiles = [
+    { n: String(recap.kids), l: "Riders" },
+    { n: String(recap.horses), l: "Horses" },
+    { n: String(recap.following), l: "Following" },
+    { n: String(recap.deadlinesCaught || recap.alerts || 0), l: "Alerts" },
+  ];
+  return (
+    <Card className="mb-4 border-gold/40 bg-gradient-to-br from-rust to-ember text-bone">
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] uppercase tracking-widest text-gold">
+          Your season · {recap.memberDays} day{Number(recap.memberDays) === 1 ? "" : "s"} riding
+        </div>
+        <Rowel className="h-6 w-6 text-gold" />
+      </div>
+      <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+        {tiles.map((t) => (
+          <div key={t.l}>
+            <div className="font-display text-2xl font-bold">{t.n}</div>
+            <div className="mt-0.5 text-[9px] uppercase tracking-wide text-bone/60">{t.l}</div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[11px] leading-snug text-bone/75">
+        Everything your family has built here — and we've got your back on every deadline ahead.
+      </p>
+    </Card>
+  );
+}
 
 /* ================= TODAY ================= */
 export function TodayScreen() {
@@ -49,6 +93,8 @@ export function TodayScreen() {
   return (
     <div>
       <ScreenHeader eyebrow="The Hollis Family · Stephenville, TX" title={`Howdy, ${name}.`} />
+
+      <SeasonRecapCard />
 
       <Card className="mb-4 bg-gradient-to-br from-leather to-ink text-bone">
         <div className="text-[11px] uppercase tracking-widest text-gold">This season together</div>
