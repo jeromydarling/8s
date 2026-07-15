@@ -29,16 +29,8 @@ async function getEvents() {
       const d = await r.json();
       if (d.events && d.events.length) return d.events;
     }
-  } catch {
-    /* fall back */
-  }
-  // Fallback: bundled seed.
-  try {
-    const seed = await readFile(new URL("../shared/seed.ts", import.meta.url), "utf8");
-    const m = seed.match(/events:\s*\[([\s\S]*?)\n  \],/);
-    void m;
-  } catch {
-    /* ignore */
+  } catch (e) {
+    console.warn(`[seo] events API unreachable (${API}): ${e?.message ?? e}`);
   }
   return [];
 }
@@ -66,7 +58,9 @@ const events = await getEvents();
 await mkdir(outRoot, { recursive: true });
 
 if (events.length === 0) {
-  console.log("[seo] no events available — skipping");
+  // Non-fatal (don't block the deploy) but LOUD — a zero-page SEO build should
+  // never pass unnoticed. Ensure the events API is reachable at build time.
+  console.warn("::warning::[seo] no events available — 0 SEO pages generated. Check the /api/events endpoint is live.");
   process.exit(0);
 }
 

@@ -663,7 +663,10 @@ function PricingSection({ onDemo }: { onDemo: () => void }) {
         ))}
       </div>
       <p className="mt-8 text-center text-xs text-ink/50">
-        Associations: event management, member database and draw tools from $49/mo. Brand partnerships available.
+        Associations: event management, member database and draw tools from $49/mo.{" "}
+        <button onClick={() => pick("associations")} className="font-semibold text-rust underline-offset-2 hover:underline">
+          Get started →
+        </button>
       </p>
     </section>
   );
@@ -707,16 +710,22 @@ function Footer() {
             </p>
           </div>
           <div className="grid grid-cols-2 gap-x-12 gap-y-2 text-sm sm:grid-cols-3">
-            {[
-              ["Product", ["The Draw", "Buckle Board", "Tack Room", "Sponsor Pen", "Gatepost"]],
-              ["Company", ["Why 8 Seconds", "Community", "Pricing", "Associations"]],
-              ["Reach us", ["hello@8s.rodeo", "Stephenville, TX"]],
-            ].map(([h, items]) => (
-              <div key={h as string}>
-                <div className="mb-3 font-display text-xs font-semibold uppercase tracking-widest text-gold">{h as string}</div>
+            {([
+              ["Product", [["The Draw", "/app/draw"], ["Buckle Board", "/app/buckle"], ["Tack Room", "/app/tack"], ["Sponsor Pen", "/app/sponsor"], ["Gatepost", "/app/gatepost"]]],
+              ["Company", [["Why 8 Seconds", "/#why"], ["Pricing", "/#pricing"], ["List an event", "/submit"], ["Associations", "/app/more?upgrade=associations"]]],
+              ["Reach us", [["hello@8s.rodeo", "mailto:hello@8s.rodeo"], ["Stephenville, TX", ""]]],
+            ] as [string, [string, string][]][]).map(([h, items]) => (
+              <div key={h}>
+                <div className="mb-3 font-display text-xs font-semibold uppercase tracking-widest text-gold">{h}</div>
                 <ul className="space-y-1.5 text-bone/55">
-                  {(items as string[]).map((it) => (
-                    <li key={it} className="transition hover:text-bone">{it}</li>
+                  {items.map(([label, href]) => (
+                    <li key={label}>
+                      {href ? (
+                        <a href={href} className="transition hover:text-bone">{label}</a>
+                      ) : (
+                        <span>{label}</span>
+                      )}
+                    </li>
                   ))}
                 </ul>
               </div>

@@ -87,29 +87,13 @@ export async function runAlerts(env: Env): Promise<{ created: number; sent: numb
   return { created, sent };
 }
 
-// Email delivery. Uses Resend if RESEND_API_KEY is set; otherwise logs and
-// returns false (alert still shows in-app). Swap provider here only.
+// Email delivery goes through the shared adapter (worker/email.ts), which prefers
+// the Cloudflare Email Service binding and falls back to Resend then logging —
+// so deadline alerts actually send on the documented prod path, not only when a
+// Resend key is present.
 async function sendEmail(env: Env, to: string, subject: string, text: string): Promise<boolean> {
-  if (!env.RESEND_API_KEY) {
-    console.log(`[alert:would-email] ${to} :: ${subject}`);
-    return false;
-  }
-  try {
-    const r = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: "8 Seconds <alerts@8s.rodeo>",
-        to,
-        subject,
-        text: `${text}\n\n— 8 Seconds · 8s.rodeo`,
-      }),
-    });
-    return r.ok;
-  } catch (e) {
-    console.error("email send failed", e);
-    return false;
-  }
+  const { sendMail } = await import("./email");
+  return sendMail(env, { to, subject, text: `${text}\n\n— 8 Seconds · 8s.rodeo` });
 }
 
 function safeArr(v: unknown): string[] {

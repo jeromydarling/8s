@@ -8,7 +8,7 @@ import { track } from "../lib/track";
 import { cn, Rowel, Tag } from "../components/ui";
 import { AuthModal } from "../marketing/AuthModal";
 import { LazyRodeoMap } from "../components/LazyRodeoMap";
-import { Avatar, Card, EmptyHint, ProgressBar, ScreenHeader, Stagger, StaggerItem, StatusDot } from "./widgets";
+import { Avatar, Card, EmptyHint, ProgressBar, SampleBanner, ScreenHeader, Stagger, StaggerItem, StatusDot } from "./widgets";
 
 /* ================= MORE ================= */
 export function MoreScreen() {
@@ -82,7 +82,7 @@ function BillingPanel() {
   const [notice, setNotice] = useState<string>("");
   const [authOpen, setAuthOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
-  const pendingPlan = useRef<"family" | "pro" | null>(null);
+  const pendingPlan = useRef<"family" | "pro" | "associations" | null>(null);
   const handledQuery = useRef(false);
 
   useEffect(() => {
@@ -121,7 +121,7 @@ function BillingPanel() {
     }
   }
 
-  async function startCheckout(plan: "family" | "pro") {
+  async function startCheckout(plan: "family" | "pro" | "associations") {
     setBusy(plan);
     setNotice("");
     try {
@@ -164,7 +164,7 @@ function BillingPanel() {
       }
       return;
     }
-    if (up === "family" || up === "pro") {
+    if (up === "family" || up === "pro" || up === "associations") {
       if (loading) return; // wait for /api/me so signed-in users skip the modal
       handledQuery.current = true;
       window.history.replaceState({}, "", "/app/more");
@@ -358,6 +358,60 @@ function AlertsPanel() {
 /* ================= SPONSOR PEN ================= */
 const tierTone = { Bronze: "ink", Silver: "sage", Gold: "gold", Buckle: "rust" } as const;
 
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string);
+}
+
+// Real, shareable media kit: builds a branded one-pager in a new window and
+// opens the print dialog (Save as PDF). No server round-trip needed.
+function openMediaKit(kit: { name: string; backNumber: string; disciplines: string[]; state?: string; sponsors: { brand: string; tier: string }[]; annualValue: number }) {
+  const w = window.open("", "_blank", "width=860,height=1120");
+  if (!w) return;
+  const partners = kit.sponsors.map((s) => `<li><strong>${esc(s.brand)}</strong> <span style="color:#8a5a3b">· ${esc(s.tier)} partner</span></li>`).join("");
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(kit.name)} — Media Kit</title>
+  <style>
+    @page{margin:0.6in}
+    *{box-sizing:border-box} body{margin:0;font-family:Georgia,serif;color:#2b1d12;background:#fff;line-height:1.5}
+    .wrap{max-width:720px;margin:0 auto;padding:8px}
+    .brand{font-family:Arial Narrow,Arial,sans-serif;font-weight:700;letter-spacing:1px;color:#b8502b;font-size:20px}
+    .rule{height:3px;width:56px;background:#e0a458;margin:10px 0 20px}
+    h1{font-family:Arial Narrow,Arial,sans-serif;font-size:40px;line-height:1;margin:0 0 4px}
+    .meta{color:#8a5a3b;font-size:14px;margin-bottom:18px}
+    .stats{display:flex;gap:14px;margin:18px 0}
+    .stat{flex:1;border:1px solid #e6d3b3;border-radius:12px;padding:12px;text-align:center}
+    .stat b{display:block;font-family:Arial Narrow,Arial,sans-serif;font-size:26px}
+    .stat span{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#8a5a3b}
+    h2{font-family:Arial Narrow,Arial,sans-serif;font-size:16px;text-transform:uppercase;letter-spacing:1px;color:#b8502b;margin:22px 0 8px}
+    ul{margin:0;padding-left:18px} li{margin:5px 0}
+    .tiers{display:flex;gap:10px;margin-top:8px}
+    .tier{flex:1;border:1px solid #e6d3b3;border-radius:12px;padding:12px}
+    .tier b{font-family:Arial Narrow,Arial,sans-serif}
+    .foot{margin-top:26px;border-top:1px solid #d9b98c;padding-top:12px;font-size:12px;color:#8a5a3b}
+    @media print{.noprint{display:none}}
+  </style></head><body><div class="wrap">
+    <div class="brand">8&nbsp;SECONDS</div><div class="rule"></div>
+    <h1>${esc(kit.name)}</h1>
+    <div class="meta">#${esc(kit.backNumber || "—")} · ${esc(kit.disciplines.join(" · ") || "Rodeo athlete")}${kit.state ? ` · ${esc(kit.state)}` : ""}</div>
+    <p>A dedicated youth rodeo competitor building a brand in and out of the arena. Partnering means real visibility with a devoted Western audience — at every rodeo, on every share card, all season long.</p>
+    <div class="stats">
+      <div class="stat"><b>$${(kit.annualValue / 1000).toFixed(1)}k</b><span>Annual partner value</span></div>
+      <div class="stat"><b>${kit.sponsors.length}</b><span>Current partners</span></div>
+      <div class="stat"><b>${kit.disciplines.length}</b><span>Events run</span></div>
+    </div>
+    <h2>Current partners</h2><ul>${partners || "<li>Open for founding partners</li>"}</ul>
+    <h2>Partnership tiers</h2>
+    <div class="tiers">
+      <div class="tier"><b>Buckle</b><br><span style="color:#8a5a3b">Title partner — logo lead, all channels</span></div>
+      <div class="tier"><b>Gold</b><br><span style="color:#8a5a3b">Featured — banners + share cards</span></div>
+      <div class="tier"><b>Silver</b><br><span style="color:#8a5a3b">Supporting — social + thank-yous</span></div>
+    </div>
+    <div class="foot">Let's talk — reply to the family that shared this, or reach us at 8s.rodeo. Built with 8 Seconds.</div>
+    <p class="noprint" style="text-align:center;margin-top:20px"><button onclick="window.print()" style="background:#b8502b;color:#fff;border:0;border-radius:999px;padding:12px 26px;font-family:Arial Narrow,Arial,sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:1px;cursor:pointer">Save as PDF / Print</button></p>
+  </div></body></html>`);
+  w.document.close();
+  w.focus();
+}
+
 export function SponsorScreen() {
   const { data } = useDemo();
   if (!data) return null;
@@ -367,6 +421,7 @@ export function SponsorScreen() {
   return (
     <div>
       <ScreenHeader eyebrow="The Sponsor Pen" title="Partners" />
+      <SampleBanner note="Sample partners — the media kit uses this demo athlete until you add your own." />
 
       <Card className="mb-4 bg-gradient-to-br from-leather to-ink text-bone">
         <div className="flex items-center justify-between">
@@ -380,14 +435,25 @@ export function SponsorScreen() {
           <Rowel className="h-8 w-8 text-gold" />
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-          {[[`$${(total / 1000).toFixed(1)}k`, "Annual value"], [String(data.sponsors.length), "Partners"], ["23", "Events"]].map(([n, l]) => (
+          {[[`$${(total / 1000).toFixed(1)}k`, "Annual value"], [String(data.sponsors.length), "Partners"], [String(rylee.disciplines.length), "Events"]].map(([n, l]) => (
             <div key={l} className="rounded-xl bg-white/10 py-2">
               <div className="font-display text-lg font-bold">{n}</div>
               <div className="text-[8px] uppercase tracking-widest text-bone/60">{l}</div>
             </div>
           ))}
         </div>
-        <button className="mt-4 w-full rounded-full bg-bone py-2.5 text-xs font-bold uppercase tracking-wider text-ink transition hover:bg-white">
+        <button
+          onClick={() =>
+            openMediaKit({
+              name: `${rylee.firstName} ${rylee.lastName}`,
+              backNumber: String(rylee.backNumber),
+              disciplines: rylee.disciplines,
+              sponsors: data.sponsors.map((s) => ({ brand: s.brand, tier: s.tier })),
+              annualValue: total,
+            })
+          }
+          className="mt-4 w-full rounded-full bg-bone py-2.5 text-xs font-bold uppercase tracking-wider text-ink transition hover:bg-white"
+        >
           Generate media kit (PDF)
         </button>
       </Card>
@@ -435,9 +501,32 @@ interface LiveArena {
 
 export function GatepostScreen() {
   const { data } = useDemo();
+  const { user } = useAuth();
   const [signed, setSigned] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [liveArenas, setLiveArenas] = useState<LiveArena[] | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+
+  // Load the signed-in family's saved signatures so "Add my name" persists.
+  useEffect(() => {
+    if (!user) {
+      setSigned({});
+      return;
+    }
+    api.myPetitions().then((d) => setSigned(Object.fromEntries(d.arenas.map((a) => [a, true]))));
+  }, [user]);
+
+  // Persist a signature (or open sign-in for guests).
+  function toggleSign(arenaId: string) {
+    if (!user) {
+      setAuthOpen(true);
+      return;
+    }
+    const next = !signed[arenaId];
+    setSigned((s) => ({ ...s, [arenaId]: next }));
+    track("petition_signed", { arena: arenaId, signed: next });
+    api.signPetition(arenaId, next).catch(() => setSigned((s) => ({ ...s, [arenaId]: !next })));
+  }
 
   useEffect(() => {
     let alive = true;
@@ -532,7 +621,7 @@ export function GatepostScreen() {
                       <ProgressBar pct={pct} tone="rust" />
                     </div>
                     <button
-                      onClick={() => setSigned((s) => ({ ...s, [a.id]: !isSigned }))}
+                      onClick={() => toggleSign(a.id)}
                       className={cn(
                         "mt-3 w-full rounded-full py-2.5 text-xs font-bold uppercase tracking-wider transition",
                         isSigned ? "bg-sage/15 text-sage-deep" : "bg-ink text-bone hover:bg-leather",
@@ -552,6 +641,7 @@ export function GatepostScreen() {
           );
         })}
       </Stagger>
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onAuthed={() => setAuthOpen(false)} intent="Add your name to the fight" />
     </div>
   );
 }
@@ -564,15 +654,20 @@ Cade Hollis,Chex,Lone Star Jackpot,Tie-Down,11.9,2,2026-05-17
 Maelaina,Peanut,Glen Rose Finals,Barrels,19.43,4,2026-05-24`;
 
 export function ImportScreen() {
+  const { user, refresh } = useAuth();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [err, setErr] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [imported, setImported] = useState("");
+  const [authOpen, setAuthOpen] = useState(false);
 
   async function run() {
     setBusy(true);
     setErr("");
     setResult(null);
+    setImported("");
     try {
       const r = await api.importData(text, "pasted-data.csv");
       setResult(r);
@@ -580,6 +675,26 @@ export function ImportScreen() {
       setErr(String((e as Error).message ?? e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function confirmImport() {
+    if (!user) {
+      setAuthOpen(true);
+      return;
+    }
+    if (!result) return;
+    setConfirming(true);
+    setErr("");
+    try {
+      const r = await api.importConfirm(result.records);
+      track("import_confirmed", r.added);
+      setImported(`Added ${r.added.contestants} rider${r.added.contestants === 1 ? "" : "s"} and ${r.added.horses} horse${r.added.horses === 1 ? "" : "s"} to your barn.`);
+      await refresh();
+    } catch (e) {
+      setErr(String((e as Error).message ?? e));
+    } finally {
+      setConfirming(false);
     }
   }
 
@@ -654,11 +769,24 @@ export function ImportScreen() {
             ))}
           </Stagger>
           {result.records.length === 0 && <EmptyHint>No records detected — try the sample.</EmptyHint>}
-          <button className="mt-4 w-full rounded-full bg-ink py-3 text-xs font-bold uppercase tracking-wider text-bone">
-            Confirm & import {result.records.length} records
-          </button>
+          {imported ? (
+            <div className="mt-4 rounded-2xl bg-sage/12 p-4 text-center text-sm font-semibold text-sage-deep">
+              ✓ {imported} <Link to="/app/tack" className="underline underline-offset-2">See your barn →</Link>
+            </div>
+          ) : (
+            result.records.length > 0 && (
+              <button
+                onClick={confirmImport}
+                disabled={confirming}
+                className="mt-4 w-full rounded-full bg-ink py-3 text-xs font-bold uppercase tracking-wider text-bone transition hover:bg-leather disabled:opacity-50"
+              >
+                {confirming ? "Importing…" : user ? `Confirm & import to my barn` : "Sign in to import"}
+              </button>
+            )
+          )}
         </div>
       )}
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onAuthed={() => { setAuthOpen(false); confirmImport(); }} intent="Save your imported history" />
     </div>
   );
 }
@@ -673,6 +801,7 @@ export function BudgetScreen() {
   return (
     <div>
       <ScreenHeader eyebrow="Season Budget" title="Every dollar" />
+      <SampleBanner note="Sample budget — a starting point you can make your own." />
       <Card className="mb-4 bg-gradient-to-br from-leather to-ink text-bone">
         <div className="text-[11px] uppercase tracking-widest text-gold">Spent this season</div>
         <div className="font-display text-4xl font-bold">${totalSpent.toLocaleString()}</div>

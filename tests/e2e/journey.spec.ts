@@ -7,7 +7,9 @@ import { test, expect, type Page } from "@playwright/test";
 // Always runs (signup verification is off by default). Override the target with
 // BASE_URL; the admin token (for cleanup) defaults to the known ART_INGEST_TOKEN.
 
-const TOKEN = process.env.ART_INGEST_TOKEN || "rowel-8s-ingest-a7f3c9e1";
+// Cleanup token comes from the CI secret ART_INGEST_TOKEN (must match the Worker
+// secret). If unset, the afterAll purge simply no-ops (it's best-effort).
+const TOKEN = process.env.ART_INGEST_TOKEN || "";
 const stamp = Date.now();
 const email = `e2e+journey-${stamp}@8s.rodeo`;
 const password = "rodeo-test-8s!";

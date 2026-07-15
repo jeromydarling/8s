@@ -9,6 +9,7 @@ import {
   verifyPassword,
 } from "./auth";
 import { resetEmail, sendMail, verifyEmail, welcomeEmail, welcomeVerifyEmail } from "./email";
+import { clientIp, rateLimit, tokenOk } from "./guard";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const now = () => new Date().toISOString();
@@ -33,6 +34,7 @@ async function mintToken(db: D1Database, userId: string, email: string, kind: "v
 export async function signup(c: Context<{ Bindings: Env }>): Promise<Response> {
   const db = requireDB(c);
   if (!db) return c.json({ error: "Accounts unavailable" }, 503);
+  if (!rateLimit(`signup:${clientIp(c)}`, 5, 60_000)) return c.json({ error: "Too many attempts. Try again in a minute." }, 429);
   const body = await c.req.json().catch(() => ({}));
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
@@ -80,7 +82,7 @@ export async function signup(c: Context<{ Bindings: Env }>): Promise<Response> {
 /* ---------------- Test-user cleanup (token-guarded) ---------------- */
 // Deletes a user + all their rows by email. Used by E2E to keep D1 tidy.
 export async function purgeUser(c: Context<{ Bindings: Env }>): Promise<Response> {
-  if (c.req.query("token") !== c.env.ART_INGEST_TOKEN) return c.json({ error: "forbidden" }, 403);
+  if (!tokenOk(c)) return c.json({ error: "forbidden" }, 403);
   const db = requireDB(c);
   if (!db) return c.json({ error: "unavailable" }, 503);
   const email = String(c.req.query("email") ?? "").trim().toLowerCase();
@@ -185,6 +187,7 @@ export async function performReset(c: Context<{ Bindings: Env }>): Promise<Respo
 export async function login(c: Context<{ Bindings: Env }>): Promise<Response> {
   const db = requireDB(c);
   if (!db) return c.json({ error: "Accounts unavailable" }, 503);
+  if (!rateLimit(`login:${clientIp(c)}`, 10, 60_000)) return c.json({ error: "Too many attempts. Try again in a minute." }, 429);
   const body = await c.req.json().catch(() => ({}));
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
@@ -281,6 +284,64 @@ export async function addHorse(c: Context<{ Bindings: Env }>): Promise<Response>
   return c.json({ ok: true, id });
 }
 
+// Persist a confirmed AI import into the user's real roster. Extracts distinct
+// riders + horses from the parsed rows and inserts the ones they don't have yet
+// (dedup by name, within the batch and against existing rows).
+export async function confirmImport(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const g = await guard(c);
+  if (g instanceof Response) return g;
+  const b = await c.req.json().catch(() => ({}));
+  const records: Array<Record<string, unknown>> = Array.isArray(b.records) ? b.records : [];
+  if (!records.length) return c.json({ error: "Nothing to import." }, 422);
+
+  const riders = new Set<string>();
+  const horses = new Set<string>();
+  for (const r of records.slice(0, 500)) {
+    const rider = String(r.name ?? r.rider ?? r.contestant ?? "").trim();
+    const horse = String(r.horse ?? r["horse name"] ?? r.barn ?? "").trim();
+    if (rider && rider.length <= 80) riders.add(rider);
+    if (horse && horse.length <= 100) horses.add(horse);
+  }
+
+  const [ec, eh] = await Promise.all([
+    g.db.prepare("SELECT first_name, last_name FROM contestants_u WHERE user_id = ?").bind(g.id).all(),
+    g.db.prepare("SELECT name FROM horses_u WHERE user_id = ?").bind(g.id).all(),
+  ]);
+  const haveRider = new Set(
+    (ec.results ?? []).map((r) => `${(r as { first_name: string }).first_name} ${(r as { last_name?: string }).last_name ?? ""}`.trim().toLowerCase()),
+  );
+  const haveHorse = new Set((eh.results ?? []).map((r) => String((r as { name: string }).name).toLowerCase()));
+
+  const stmts: D1PreparedStatement[] = [];
+  let addedC = 0;
+  let addedH = 0;
+  for (const rider of riders) {
+    if (haveRider.has(rider.toLowerCase())) continue;
+    const [first, ...rest] = rider.split(/\s+/);
+    stmts.push(
+      g.db
+        .prepare(
+          "INSERT INTO contestants_u (id,user_id,first_name,last_name,birthdate,division,associations,disciplines,back_number,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        )
+        .bind(uid("c"), g.id, first.slice(0, 80), rest.join(" ").slice(0, 80), "", "", "[]", "[]", "", now()),
+    );
+    addedC++;
+  }
+  for (const horse of horses) {
+    if (haveHorse.has(horse.toLowerCase())) continue;
+    stmts.push(
+      g.db
+        .prepare(
+          "INSERT INTO horses_u (id,user_id,rider_id,name,barn_name,breed,color,role,farrier_due,vet_due,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        )
+        .bind(uid("h"), g.id, "", horse.slice(0, 100), "", "", "", "", "", "", "Imported", now()),
+    );
+    addedH++;
+  }
+  if (stmts.length) await g.db.batch(stmts);
+  return c.json({ ok: true, added: { contestants: addedC, horses: addedH } });
+}
+
 export async function deleteRecord(c: Context<{ Bindings: Env }>): Promise<Response> {
   const g = await guard(c);
   if (g instanceof Response) return g;
@@ -368,6 +429,32 @@ export async function submitEvent(c: Context<{ Bindings: Env }>): Promise<Respon
     )
     .run();
   return c.json({ ok: true });
+}
+
+/* ---------------- Gatepost petitions ---------------- */
+export async function signPetition(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const g = await guard(c);
+  if (g instanceof Response) return g;
+  const b = await c.req.json().catch(() => ({}));
+  const arena = String(b.arena_id ?? "").slice(0, 80);
+  if (!arena) return c.json({ error: "arena_id required" }, 422);
+  const on = b.signed !== false;
+  if (on) {
+    await g.db
+      .prepare("INSERT OR IGNORE INTO petition_signatures (user_id,arena_id,created_at) VALUES (?,?,?)")
+      .bind(g.id, arena, now())
+      .run();
+  } else {
+    await g.db.prepare("DELETE FROM petition_signatures WHERE user_id = ? AND arena_id = ?").bind(g.id, arena).run();
+  }
+  return c.json({ ok: true, signed: on });
+}
+
+export async function myPetitions(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const g = await guard(c);
+  if (g instanceof Response) return g;
+  const { results } = await g.db.prepare("SELECT arena_id FROM petition_signatures WHERE user_id = ?").bind(g.id).all();
+  return c.json({ arenas: (results ?? []).map((r) => (r as { arena_id: string }).arena_id) });
 }
 
 /* ---------------- Analytics ---------------- */

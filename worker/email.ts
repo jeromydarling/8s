@@ -8,7 +8,12 @@ import type { Env } from "./index";
 
 const FROM = "8 Seconds <noreply@8s.rodeo>";
 const FROM_ADDR = "noreply@8s.rodeo";
-const REPLY_TO = "gardener@thecros.app";
+const REPLY_TO = "help@8s.rodeo";
+
+// Escape user/admin-supplied text before it goes into an HTML email body.
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string);
+}
 
 export interface Mail {
   to: string;
@@ -192,9 +197,9 @@ export function resetEmail(url: string): Mail {
 export function brandedEmail(subject: string, bodyText: string): Mail {
   const paras = bodyText
     .split(/\n{2,}/)
-    .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+    .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
     .join("");
-  return { to: "", subject, text: bodyText, html: shell(subject, paras) };
+  return { to: "", subject, text: bodyText, html: shell(escapeHtml(subject), paras) };
 }
 
 // Monthly / season value recap — the retention hook. `lines` are plain strings.

@@ -79,15 +79,26 @@ export async function postCheckout(c: Context<{ Bindings: Env }>): Promise<Respo
     // Fetch the user — email is required for Stripe customer creation; we also
     // reuse stripe_customer_id when available so we don't create duplicates.
     const u = (await db
-      .prepare("SELECT id, email, name, stripe_customer_id FROM users WHERE id = ?")
+      .prepare("SELECT id, email, name, stripe_customer_id, plan, plan_status FROM users WHERE id = ?")
       .bind(userId)
       .first()) as {
       id: string;
       email: string;
       name: string | null;
       stripe_customer_id: string | null;
+      plan: string | null;
+      plan_status: string | null;
     } | null;
     if (!u) return c.json({ error: "Not signed in" }, 401);
+
+    // Block double-subscribe: an already-paying account should change plans via
+    // the billing portal, not create a second Stripe subscription.
+    if (u.plan && u.plan !== "free" && u.plan_status !== "canceled") {
+      return c.json(
+        { error: "already_subscribed", message: "You're already on a paid plan — manage it from the billing portal." },
+        409,
+      );
+    }
 
     let customerId = u.stripe_customer_id;
     if (!customerId) {

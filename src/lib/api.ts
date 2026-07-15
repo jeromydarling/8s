@@ -27,6 +27,13 @@ export const api = {
       body: JSON.stringify({ text, filename }),
     }),
 
+  // Persist a confirmed import into the signed-in user's roster.
+  importConfirm: (records: Array<Record<string, string | number | null>>) =>
+    jsonFetch<{ ok: boolean; added: { contestants: number; horses: number } }>("/api/import/confirm", {
+      method: "POST",
+      body: JSON.stringify({ records }),
+    }),
+
   // Real events from D1 (Perplexity-seeded). Returns null when none exist yet,
   // so callers fall back to the bundled demo events.
   events: async (): Promise<RodeoEvent[] | null> => {
@@ -45,8 +52,8 @@ export const api = {
       billingEnabled: false,
     })),
 
-  // Stripe Checkout: returns a hosted URL to redirect to. plan: "family" | "pro".
-  checkout: (plan: "family" | "pro") =>
+  // Stripe Checkout: returns a hosted URL to redirect to.
+  checkout: (plan: "family" | "pro" | "associations") =>
     jsonFetch<{ url: string }>("/api/billing/checkout", { method: "POST", body: JSON.stringify({ plan }) }),
   // Stripe billing portal (manage/cancel) for existing subscribers.
   billingPortal: () => jsonFetch<{ url: string }>("/api/billing/portal", { method: "POST" }),
@@ -74,6 +81,11 @@ export const api = {
   markAlertsRead: () => jsonFetch<{ ok: boolean }>("/api/alerts/read", { method: "POST" }),
   submitEvent: (e: Record<string, unknown>) =>
     jsonFetch<{ ok: boolean }>("/api/submit-event", { method: "POST", body: JSON.stringify(e) }),
+
+  // Gatepost petition signatures (persisted per signed-in user).
+  signPetition: (arena_id: string, signed: boolean) =>
+    jsonFetch<{ ok: boolean; signed: boolean }>("/api/gatepost/sign", { method: "POST", body: JSON.stringify({ arena_id, signed }) }),
+  myPetitions: () => jsonFetch<{ arenas: string[] }>("/api/gatepost/mine").catch(() => ({ arenas: [] })),
 };
 
 // Bump alongside ART_VERSION in worker/art.ts to bust cached imagery.

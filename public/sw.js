@@ -1,7 +1,10 @@
 // 8 Seconds service worker — installable + offline shell.
 // Static assets: cache-first. Navigations: network-first w/ offline fallback.
 // API: never cached (always fresh).
-const CACHE = "eight-v1";
+// Bump CACHE on any deploy that changes the offline shell so old caches self-
+// evict (the activate handler deletes every cache name != CACHE). Hashed Vite
+// assets and network-first navigation keep stale-bundle risk low regardless.
+const CACHE = "eight-v2";
 const SHELL = ["/", "/app", "/manifest.webmanifest", "/icon.svg", "/favicon.svg"];
 
 self.addEventListener("install", (e) => {

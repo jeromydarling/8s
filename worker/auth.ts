@@ -8,8 +8,20 @@ import type { Env } from "./index";
 const COOKIE = "eight_session";
 const DAY = 86400;
 
+// If SESSION_SECRET is unset we must NOT sign with a known constant (that would
+// let anyone forge a `userId.timestamp` cookie for any account). Instead fall
+// back to a random per-isolate key: sessions can't be forged; they just won't
+// persist across isolate recycles until the real secret is set. Set
+// SESSION_SECRET in production so sessions are stable.
+const EPHEMERAL_SECRET = `${crypto.randomUUID()}${crypto.randomUUID()}`;
+let warnedNoSecret = false;
 function secret(env: Env): string {
-  return env.SESSION_SECRET || "8s-dev-session-secret-change-me";
+  if (env.SESSION_SECRET) return env.SESSION_SECRET;
+  if (!warnedNoSecret) {
+    console.warn("[auth] SESSION_SECRET is unset — using an ephemeral per-isolate key. Sessions won't persist; set SESSION_SECRET before launch.");
+    warnedNoSecret = true;
+  }
+  return EPHEMERAL_SECRET;
 }
 
 const enc = new TextEncoder();

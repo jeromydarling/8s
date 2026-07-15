@@ -1,6 +1,20 @@
 import { motion } from "framer-motion";
 import type { ReactNode } from "react";
 import { cn } from "../components/ui";
+import { useAuth } from "../lib/auth";
+
+// Honest labeling: shown to a signed-in user on screens that still render the
+// bundled Hollis demo dataset, so sample content is never mistaken for theirs.
+export function SampleBanner({ note }: { note?: string }) {
+  const { user } = useAuth();
+  if (!user) return null;
+  return (
+    <div className="mb-4 flex items-center gap-2 rounded-xl border border-gold/40 bg-gold/12 px-3 py-2 text-[11px] font-semibold text-saddle">
+      <span>👀</span>
+      <span>{note ?? "Sample data — your own appears here as you build your barn."}</span>
+    </div>
+  );
+}
 
 export function ScreenHeader({ eyebrow, title, action }: { eyebrow: string; title: string; action?: ReactNode }) {
   return (

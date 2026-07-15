@@ -14,6 +14,7 @@ import {
   daysUntil,
   fmtDate,
   ProgressBar,
+  SampleBanner,
   ScreenHeader,
   Stagger,
   StaggerItem,
@@ -67,8 +68,12 @@ function SeasonRecapCard() {
 /* ================= TODAY ================= */
 export function TodayScreen() {
   const { data } = useDemo();
+  const { user } = useAuth();
   if (!data) return null;
-  const name = demoName().split(" ")[0] || "neighbor";
+  const name = user?.name?.split(" ")[0] || demoName().split(" ")[0] || "neighbor";
+  const eyebrow = user
+    ? `Your barn${user.state ? ` · ${user.state}` : ""}`
+    : "The Hollis Family · Stephenville, TX";
 
   const alerts = [
     ...data.events
@@ -92,12 +97,12 @@ export function TodayScreen() {
 
   return (
     <div>
-      <ScreenHeader eyebrow="The Hollis Family · Stephenville, TX" title={`Howdy, ${name}.`} />
+      <ScreenHeader eyebrow={eyebrow} title={`Howdy, ${name}.`} />
 
       <SeasonRecapCard />
 
       <Card className="mb-4 bg-gradient-to-br from-leather to-ink text-bone">
-        <div className="text-[11px] uppercase tracking-widest text-gold">This season together</div>
+        <div className="text-[11px] uppercase tracking-widest text-gold">{user ? "Sample season" : "This season together"}</div>
         <div className="mt-3 grid grid-cols-4 gap-2 text-center">
           {stats.map((st) => (
             <div key={st.l}>
@@ -132,9 +137,9 @@ export function TodayScreen() {
 
       <div className="mt-6 grid grid-cols-2 gap-3">
         {[
-          { to: "/app/buckle", t: "Buckle Board", d: "3 ladders running", emoji: "🏆" },
-          { to: "/app/sponsor", t: "Sponsor Pen", d: "1 renewal due", emoji: "✨" },
-          { to: "/app/gatepost", t: "The Gatepost", d: "2 arenas need you", emoji: "📣" },
+          { to: "/app/buckle", t: "Buckle Board", d: "Track qualifying ladders", emoji: "🏆" },
+          { to: "/app/sponsor", t: "Sponsor Pen", d: "Manage partners", emoji: "✨" },
+          { to: "/app/gatepost", t: "The Gatepost", d: "Defend the arenas", emoji: "📣" },
           { to: "/app/import", t: "Import data", d: "Bring your history", emoji: "↥" },
         ].map((q) => (
           <Link key={q.to} to={q.to}>
@@ -408,6 +413,7 @@ export function BuckleScreen() {
   return (
     <div>
       <ScreenHeader eyebrow="The Buckle Board" title="Road to the buckle" />
+      <SampleBanner note="Sample ladders — add your riders in the Tack Room to track their real points." />
       <Stagger>
         {data.ladders.map((l) => {
           const c = byId[l.contestantId];
@@ -465,8 +471,8 @@ export function BuckleScreen() {
 /* ================= TACK ROOM ================= */
 export function TackScreen() {
   const { data } = useDemo();
-  const { user, horses: myHorses, refresh } = useAuth();
-  const [tab, setTab] = useState<"horses" | "runs">("horses");
+  const { user, horses: myHorses, contestants: myRiders, refresh } = useAuth();
+  const [tab, setTab] = useState<"riders" | "horses" | "runs">("riders");
   if (!data) return null;
   const riders = Object.fromEntries(data.contestants.map((c) => [c.id, c.firstName]));
 
@@ -474,16 +480,31 @@ export function TackScreen() {
     <div>
       <ScreenHeader eyebrow="The Tack Room" title="The barn" />
       <div className="mb-4 flex gap-2 rounded-full bg-ink/6 p-1 text-xs font-semibold">
-        {(["horses", "runs"] as const).map((t) => (
+        {(["riders", "horses", "runs"] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)} className={cn("flex-1 rounded-full py-2 capitalize transition", tab === t ? "bg-bone text-ink shadow-card" : "text-ink/50")}>
-            {t === "horses" ? "Horses" : "Run log"}
+            {t === "runs" ? "Run log" : t}
           </button>
         ))}
       </div>
 
+      {tab === "riders" && <MyRiders user={!!user} riders={myRiders} onChange={refresh} demo={data.contestants} />}
       {tab === "horses" && <MyHorses user={!!user} horses={myHorses} onChange={refresh} />}
 
-      {tab === "horses" ? (
+      {tab === "riders" ? (
+        <Stagger>
+          {data.contestants.map((c) => (
+            <StaggerItem key={c.id}>
+              <Card className="flex items-center gap-3">
+                <Avatar seed={c.avatarSeed} name={c.firstName} size={44} />
+                <div className="flex-1">
+                  <div className="font-display font-bold text-ink">{c.firstName} {c.lastName}</div>
+                  <div className="text-[11px] text-ink/50">#{c.backNumber} · {c.division} · {c.disciplines.join(" · ")}</div>
+                </div>
+              </Card>
+            </StaggerItem>
+          ))}
+        </Stagger>
+      ) : tab === "horses" ? (
         <Stagger>
           {data.horses.map((h) => (
             <StaggerItem key={h.id}>
@@ -609,6 +630,84 @@ function MyHorses({ user, horses, onChange }: { user: boolean; horses: import(".
         </button>
       )}
       <div className="mt-5 mb-2 text-[11px] font-semibold uppercase tracking-widest text-ink/40">Example barn</div>
+    </div>
+  );
+}
+
+function MyRiders({ user, riders, onChange, demo }: { user: boolean; riders: import("../lib/auth").Contestant[]; onChange: () => void; demo: { firstName: string }[] }) {
+  const [authOpen, setAuthOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ first_name: "", last_name: "", division: "", back_number: "" });
+  const [busy, setBusy] = useState(false);
+
+  async function add() {
+    if (!form.first_name.trim()) return;
+    setBusy(true);
+    try {
+      await api.addContestant(form);
+      track("contestant_added");
+      setForm({ first_name: "", last_name: "", division: "", back_number: "" });
+      setAdding(false);
+      onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!user) {
+    return (
+      <>
+        <Card className="mb-3 border-rust/25 bg-rust/[0.04]">
+          <div className="font-display font-bold text-ink">Add your riders</div>
+          <div className="mt-1 text-xs text-ink/55">Sign in to add your kids — then their ladders, entries, and sponsor kit are all yours.</div>
+          <button onClick={() => setAuthOpen(true)} className="mt-3 w-full rounded-full bg-rust py-2.5 text-xs font-bold uppercase tracking-wider text-bone">
+            Add my riders
+          </button>
+        </Card>
+        <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onAuthed={() => setAuthOpen(false)} intent="Add your riders" />
+        {demo.length > 0 && <div className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-ink/40">Example riders</div>}
+      </>
+    );
+  }
+
+  return (
+    <div className="mb-4">
+      {riders.length > 0 && (
+        <Stagger>
+          {riders.map((c) => (
+            <StaggerItem key={c.id}>
+              <Card className="flex items-center gap-3">
+                <Avatar seed={c.first_name} name={c.first_name} size={44} />
+                <div className="flex-1">
+                  <div className="font-display font-bold text-ink">{c.first_name} {c.last_name}</div>
+                  <div className="text-[11px] text-ink/50">{[c.back_number ? `#${c.back_number}` : "", c.division].filter(Boolean).join(" · ") || "Your rider"}</div>
+                </div>
+                <button onClick={() => { api.remove("contestant", c.id).then(onChange); }} className="text-ink/30 hover:text-rust" aria-label="Remove">✕</button>
+              </Card>
+            </StaggerItem>
+          ))}
+        </Stagger>
+      )}
+
+      {adding ? (
+        <Card className="mt-3">
+          <div className="grid grid-cols-2 gap-2">
+            <input autoFocus value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} placeholder="First name *" className={inputSm} />
+            <input value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} placeholder="Last name" className={inputSm} />
+            <input value={form.division} onChange={(e) => setForm({ ...form, division: e.target.value })} placeholder="Division (Junior…)" className={inputSm} />
+            <input value={form.back_number} onChange={(e) => setForm({ ...form, back_number: e.target.value })} placeholder="Back number" className={inputSm} />
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button onClick={add} disabled={busy} className="flex-1 rounded-full bg-rust py-2 text-xs font-bold uppercase tracking-wider text-bone disabled:opacity-50">{busy ? "Saving…" : "Save rider"}</button>
+            <button onClick={() => setAdding(false)} className="rounded-full bg-ink/8 px-4 py-2 text-xs font-semibold text-ink/60">Cancel</button>
+          </div>
+        </Card>
+      ) : (
+        <button onClick={() => setAdding(true)} className="mt-3 w-full rounded-2xl border border-dashed border-saddle/30 py-3 text-xs font-semibold uppercase tracking-widest text-ink/50 hover:border-rust hover:text-rust">
+          + Add a rider
+        </button>
+      )}
+      <div className="mt-5 mb-2 text-[11px] font-semibold uppercase tracking-widest text-ink/40">Example riders</div>
     </div>
   );
 }

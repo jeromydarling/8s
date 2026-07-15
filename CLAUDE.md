@@ -31,9 +31,12 @@ See `README.md` for full architecture, schema, API, and provisioning.
 - `MAPBOX_TOKEN` (var, public pk.*) — maps + geocoding.
 - `PERPLEXITY_API_KEY` (secret) — real-event seeding.
 - `ELEVEN_LABS_API_KEY` (secret) — demo-video music generation.
-- `ART_INGEST_TOKEN` (var) — guards /api/admin/* + the GitHub seed workflow.
-- `SESSION_SECRET` (secret, **recommended**) — signs auth session cookies; falls
-  back to a fixed dev secret if unset (fine for preview, set before real users).
+- `ART_INGEST_TOKEN` (**secret** — `wrangler secret put`, never committed) — guards
+  /api/admin/* (seed, ingest-art, test-email, purge-user) + the GitHub seed workflow.
+  Guards fail **closed** when unset (deny). Rotate if the old committed value leaked.
+- `SESSION_SECRET` (secret, **required for stable sessions**) — signs auth session
+  cookies. When unset, the worker falls back to a random per-isolate key: sessions
+  can't be forged, but they won't persist across isolate recycles. Set before launch.
 - `RESEND_API_KEY` (secret, optional) — sends deadline-alert emails; without it,
   alerts still appear in-app and the cron logs intended sends.
 - `SENTRY_DSN` (secret, optional) — server-side Sentry DSN for the worker; captures

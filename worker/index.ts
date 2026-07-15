@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
 import { demoData } from "../shared/seed";
 import type { ImportResult, Lead } from "../shared/types";
 import { runImport } from "./import";
@@ -17,11 +18,13 @@ import {
   signup, login, logout, me, addContestant, addHorse, deleteRecord,
   toggleWatch, saveAlertSub, listAlerts, markAlertsRead, submitEvent, track,
   verifyToken, resendVerification, requestReset, performReset, purgeUser,
+  confirmImport, signPetition, myPetitions,
 } from "./account";
 import { runAlerts } from "./alerts";
 import { getPlans, postCheckout, postPortal, postWebhook, postPause, postDowngrade } from "./billing";
 import { getRecap, runMonthlyRecaps } from "./retention";
 import { runHealthScoring } from "./health";
+import { tokenOk, rateLimit, clientIp } from "./guard";
 import {
   crmMe, crmCustomers, crmCustomer, crmMessage, crmTag, crmLifecycle, crmMap, crmMetrics,
   crmAtRisk, crmTasks, crmCreateTask, crmToggleTask, crmLeads, crmLeadStage,
@@ -55,6 +58,22 @@ export interface Env {
 }
 
 const app = new Hono<{ Bindings: Env }>();
+
+// Baseline security headers on every response (HSTS, nosniff, frame + referrer
+// policy). No CSP set — the SPA uses inline styles + third-party scripts (GA,
+// Sentry, Mapbox); a strict CSP would need per-source allowlisting first.
+app.use(
+  "*",
+  secureHeaders({
+    strictTransportSecurity: "max-age=31536000; includeSubDomains",
+    xFrameOptions: "SAMEORIGIN",
+    xContentTypeOptions: "nosniff",
+    referrerPolicy: "strict-origin-when-cross-origin",
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: false,
+  }),
+);
 
 app.use("/api/*", cors());
 
@@ -95,6 +114,7 @@ app.post("/api/leads", async (c) => {
   if (!body?.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email) || !body?.name) {
     return c.json({ error: "Name and a valid email are required." }, 422);
   }
+  if (!rateLimit(`leads:${clientIp(c)}`, 8, 60_000)) return c.json({ error: "Too many submissions. Try again shortly." }, 429);
 
   const lead: Lead = {
     id: crypto.randomUUID(),
@@ -151,12 +171,16 @@ app.post("/api/import", async (c) => {
   } catch {
     return c.json({ error: "Invalid request" }, 400);
   }
+  if (!rateLimit(`import:${clientIp(c)}`, 6, 60_000)) return c.json({ error: "Slow down a moment and try again." }, 429);
   const text = (payload.text ?? "").slice(0, 12_000);
   if (!text.trim()) return c.json({ error: "Paste some data to import." }, 422);
 
   const result: ImportResult = await runImport(text, payload.filename ?? "pasted-data", c.env.AI);
   return c.json(result);
 });
+
+// Persist a confirmed import into the signed-in user's roster.
+app.post("/api/import/confirm", (c) => confirmImport(c));
 
 // ---- AI watercolor art generation ------------------------------------------
 // GET /api/art/:slug — returns a cached PNG. Falls back to a crafted SVG when
@@ -196,7 +220,7 @@ app.get("/api/admin/purge-user", (c) => purgeUser(c));
 
 // Token-guarded email smoke test: /api/admin/test-email?token=...&to=you@x.com
 app.get("/api/admin/test-email", async (c) => {
-  if (c.req.query("token") !== c.env.ART_INGEST_TOKEN) return c.json({ error: "forbidden" }, 403);
+  if (!tokenOk(c)) return c.json({ error: "forbidden" }, 403);
   const to = c.req.query("to");
   if (!to) return c.json({ error: "add &to=email" }, 400);
   const { sendMailDebug } = await import("./email");
@@ -219,6 +243,10 @@ app.post("/api/watch", (c) => toggleWatch(c));
 app.post("/api/alerts/subscribe", (c) => saveAlertSub(c));
 app.get("/api/alerts", (c) => listAlerts(c));
 app.post("/api/alerts/read", (c) => markAlertsRead(c));
+
+// ---- Gatepost petitions ----------------------------------------------------
+app.post("/api/gatepost/sign", (c) => signPetition(c));
+app.get("/api/gatepost/mine", (c) => myPetitions(c));
 
 // ---- Supply side + analytics ----------------------------------------------
 app.post("/api/submit-event", (c) => submitEvent(c));
