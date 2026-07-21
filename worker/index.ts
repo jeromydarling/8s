@@ -20,11 +20,12 @@ import {
   verifyToken, resendVerification, requestReset, performReset, purgeUser,
   confirmImport, signPetition, myPetitions,
 } from "./account";
-import { runAlerts } from "./alerts";
+import { runAlerts, runCareReminders } from "./alerts";
 import { getPlans, postCheckout, postPortal, postWebhook, postPause, postDowngrade } from "./billing";
-import { getRecap, runMonthlyRecaps } from "./retention";
+import { getRecap, runMonthlyRecaps, runRenewalReminders } from "./retention";
 import { runHealthScoring } from "./health";
 import { tokenOk, rateLimit, clientIp } from "./guard";
+import { adminNotifyEmail, notifyAdmins } from "./email";
 import {
   crmMe, crmCustomers, crmCustomer, crmMessage, crmTag, crmLifecycle, crmMap, crmMetrics,
   crmAtRisk, crmTasks, crmCreateTask, crmToggleTask, crmLeads, crmLeadStage,
@@ -153,6 +154,14 @@ app.post("/api/leads", async (c) => {
   } catch (err) {
     console.error("lead persistence failed", err);
   }
+
+  // Ping the admin inbox so new leads don't sit unseen (best-effort).
+  c.executionCtx.waitUntil(
+    notifyAdmins(
+      c.env,
+      adminNotifyEmail("lead", `${lead.name} · ${lead.email}\n${[lead.role, lead.org, lead.state, lead.disciplines].filter(Boolean).join(" · ") || "—"}`),
+    ),
+  );
 
   // Grant a short-lived demo pass cookie so /app is unlocked.
   const token = btoa(`${lead.id}:${Date.now()}`);
@@ -329,6 +338,16 @@ const handler = {
           await runHealthScoring(env);
         } catch (e) {
           console.error("cron health", e);
+        }
+        try {
+          await runCareReminders(env);
+        } catch (e) {
+          console.error("cron care-reminders", e);
+        }
+        try {
+          await runRenewalReminders(env);
+        } catch (e) {
+          console.error("cron renewal-reminders", e);
         }
       })(),
     );

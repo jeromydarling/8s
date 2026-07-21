@@ -77,11 +77,25 @@ See `README.md` for full architecture, schema, API, and provisioning.
 
 ## Crons
 
-- Daily `0 13 * * *` — compute deadline alerts (`worker/alerts.ts`) + recompute
-  customer health scores (`worker/health.ts`).
+- Daily `0 13 * * *` — deadline alerts (`worker/alerts.ts`, branded email) +
+  health scores + win-back on new at-risk (`worker/health.ts`) + horse-care
+  reminders (farrier/vet due, `runCareReminders`) + renewal reminders
+  (`worker/retention.ts`, dedup via `users.renewal_reminded_at`).
 - Weekly `0 13 * * 1` — also reseed real events/arenas via Perplexity.
 - Monthly `0 14 1 * *` — email the "Your Season" recap (`worker/retention.ts`).
 - On-demand: GitHub Actions "Seed real rodeo data" workflow (manual button).
+
+## Email suite (`worker/email.ts`, all through `sendMail`)
+
+- **Auth:** welcome (+ verify variant), verify, password-reset, password-changed.
+- **Billing (webhook + cancel-save):** paid welcome, payment-failed (needs the
+  Stripe `invoice.payment_failed` event), subscription canceled, plan paused,
+  renewal reminder. Stripe's own receipt/dunning emails can supplement these.
+- **App:** branded deadline/draw alerts, horse-care reminders, monthly recap,
+  win-back nudge.
+- **Ops:** submission-received (to submitter) + `notifyAdmins` pings the
+  `ADMIN_EMAILS` allowlist on new leads/submissions. CRM one-to-one via `brandedEmail`.
+- All templates HTML-escape interpolated input; `Reply-To: help@8s.rodeo`.
 
 ## Product surfaces
 

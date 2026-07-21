@@ -555,7 +555,7 @@ export function TackScreen() {
 function MyHorses({ user, horses, onChange }: { user: boolean; horses: import("../lib/auth").Horse[]; onChange: () => void }) {
   const [authOpen, setAuthOpen] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ name: "", breed: "", color: "", role: "" });
+  const [form, setForm] = useState({ name: "", breed: "", color: "", role: "", farrier_due: "", vet_due: "" });
   const [busy, setBusy] = useState(false);
 
   async function add() {
@@ -564,7 +564,7 @@ function MyHorses({ user, horses, onChange }: { user: boolean; horses: import(".
     try {
       await api.addHorse(form);
       track("horse_added");
-      setForm({ name: "", breed: "", color: "", role: "" });
+      setForm({ name: "", breed: "", color: "", role: "", farrier_due: "", vet_due: "" });
       setAdding(false);
       onChange();
     } finally {
@@ -618,6 +618,14 @@ function MyHorses({ user, horses, onChange }: { user: boolean; horses: import(".
             <input value={form.breed} onChange={(e) => setForm({ ...form, breed: e.target.value })} placeholder="Breed" className={inputSm} />
             <input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} placeholder="Color" className={inputSm} />
             <input value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="Role (barrel mare…)" className={inputSm} />
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <label className="text-[10px] font-semibold uppercase tracking-wide text-ink/45">Farrier due
+              <input type="date" value={form.farrier_due} onChange={(e) => setForm({ ...form, farrier_due: e.target.value })} className={cn(inputSm, "mt-0.5 w-full")} />
+            </label>
+            <label className="text-[10px] font-semibold uppercase tracking-wide text-ink/45">Vet / Coggins due
+              <input type="date" value={form.vet_due} onChange={(e) => setForm({ ...form, vet_due: e.target.value })} className={cn(inputSm, "mt-0.5 w-full")} />
+            </label>
           </div>
           <div className="mt-2 flex gap-2">
             <button onClick={add} disabled={busy} className="flex-1 rounded-full bg-rust py-2 text-xs font-bold uppercase tracking-wider text-bone disabled:opacity-50">{busy ? "Saving…" : "Save horse"}</button>

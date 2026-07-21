@@ -87,13 +87,57 @@ export async function runAlerts(env: Env): Promise<{ created: number; sent: numb
   return { created, sent };
 }
 
-// Email delivery goes through the shared adapter (worker/email.ts), which prefers
-// the Cloudflare Email Service binding and falls back to Resend then logging —
-// so deadline alerts actually send on the documented prod path, not only when a
-// Resend key is present.
+// Horse-care reminders: email a family when a farrier or vet/Coggins date is
+// coming due. Fires at fixed thresholds (7 and 1 day out) so a due date triggers
+// at most one email per threshold — no per-send dedupe column needed. Only runs
+// for horses that actually have a due date set.
+export async function runCareReminders(env: Env): Promise<number> {
+  if (!env.DB) return 0;
+  const db = env.DB;
+  const THRESHOLDS = [7, 1];
+  const today = Date.now();
+  const { results } = await db
+    .prepare(
+      `SELECT h.name, h.barn_name, h.farrier_due, h.vet_due, u.id AS uid, u.email, u.name AS uname
+         FROM horses_u h JOIN users u ON u.id = h.user_id
+        WHERE (h.farrier_due IS NOT NULL AND h.farrier_due != '')
+           OR (h.vet_due IS NOT NULL AND h.vet_due != '')`,
+    )
+    .all();
+
+  const perUser = new Map<string, { email: string; name: string; items: string[] }>();
+  for (const r of results ?? []) {
+    const row = r as Record<string, string>;
+    const label = row.barn_name || row.name;
+    for (const [field, kind] of [["farrier_due", "Farrier"], ["vet_due", "Vet / Coggins"]] as const) {
+      const d = String(row[field] ?? "").trim();
+      if (!d) continue;
+      const due = new Date(d.length <= 10 ? `${d}T00:00:00Z` : d);
+      if (Number.isNaN(due.getTime())) continue;
+      const days = Math.round((due.getTime() - today) / 86400000);
+      if (!THRESHOLDS.includes(days)) continue;
+      const entry = perUser.get(row.uid) ?? { email: row.email, name: row.uname ?? "", items: [] };
+      entry.items.push(`${label} — ${kind} due in ${days} day${days === 1 ? "" : "s"} (${d})`);
+      perUser.set(row.uid, entry);
+    }
+  }
+
+  const { sendMail, careReminderEmail } = await import("./email");
+  let sent = 0;
+  for (const { email, name, items } of perUser.values()) {
+    if (!email || !items.length) continue;
+    if (await sendMail(env, { ...careReminderEmail(name, items), to: email })) sent++;
+  }
+  return sent;
+}
+
+// Branded alert delivery via the shared adapter (worker/email.ts), which prefers
+// the Cloudflare Email Service binding and falls back to Resend then logging — so
+// deadline alerts actually send on the documented prod path (and on-brand), not
+// only when a Resend key is present.
 async function sendEmail(env: Env, to: string, subject: string, text: string): Promise<boolean> {
-  const { sendMail } = await import("./email");
-  return sendMail(env, { to, subject, text: `${text}\n\n— 8 Seconds · 8s.rodeo` });
+  const { sendMail, alertEmail } = await import("./email");
+  return sendMail(env, { ...alertEmail(subject, text), to });
 }
 
 function safeArr(v: unknown): string[] {

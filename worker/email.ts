@@ -205,15 +205,178 @@ export function brandedEmail(subject: string, bodyText: string): Mail {
 // Monthly / season value recap — the retention hook. `lines` are plain strings.
 export function recapEmail(name: string, lines: string[], url: string): Mail {
   const n = name ? `, ${name}` : "";
-  const list = lines.map((l) => `<li style="margin:6px 0">${l}</li>`).join("");
+  const list = lines.map((l) => `<li style="margin:6px 0">${escapeHtml(l)}</li>`).join("");
   return {
     to: "",
     subject: "Your season with 8 Seconds",
     text: `Here's your season so far${n}.\n\n${lines.map((l) => `- ${l}`).join("\n")}\n\nKeep going: ${url}\n\n— 8 Seconds`,
     html: shell(
-      `Your season so far${n}.`,
+      `Your season so far${escapeHtml(n)}.`,
       `<p>Here's what your family has going on the hub:</p><ul style="padding-left:18px;margin:8px 0">${list}</ul>`,
       { label: "Open your barn", url },
     ),
   };
+}
+
+/* ---------------- Auth ---------------- */
+export function passwordChangedEmail(name: string): Mail {
+  return {
+    to: "",
+    subject: "Your 8 Seconds password was changed",
+    text: `Your 8 Seconds password was just changed${name ? `, ${name}` : ""}.\n\nIf that was you, you're all set. If it wasn't, reset it right away and let us know: ${SITE}/forgot\n\n— 8 Seconds`,
+    html: shell(
+      "Your password was changed",
+      `<p>Your 8 Seconds password was just changed. If that was you, you're all set.</p><p style="color:#8a5a3b">If it wasn't you, reset it right away and reply to let us know.</p>`,
+      { label: "Reset password", url: `${SITE}/forgot` },
+    ),
+  };
+}
+
+/* ---------------- App notifications ---------------- */
+// Branded deadline / draw alert (replaces the old plain-text alert send).
+export function alertEmail(title: string, body: string, url = `${SITE}/app/draw`): Mail {
+  return {
+    to: "",
+    subject: title,
+    text: `${title}\n\n${body}\n\nOpen the Draw: ${url}\n\n— 8 Seconds · 8s.rodeo`,
+    html: shell(escapeHtml(title), `<p>${escapeHtml(body)}</p>`, { label: "Open the Draw", url }),
+  };
+}
+
+// Horse-care reminder (farrier / vet / Coggins coming due).
+export function careReminderEmail(name: string, items: string[], url = `${SITE}/app/tack`): Mail {
+  const n = name ? `, ${name}` : "";
+  const list = items.map((i) => `<li style="margin:6px 0">${escapeHtml(i)}</li>`).join("");
+  return {
+    to: "",
+    subject: "Barn reminders — care coming due",
+    text: `A few things coming due in the barn${n}:\n\n${items.map((i) => `- ${i}`).join("\n")}\n\nOpen the Tack Room: ${url}\n\n— 8 Seconds`,
+    html: shell(
+      `Coming due in the barn${escapeHtml(n)}.`,
+      `<p>Keep every teammate sound — here's what's on the calendar:</p><ul style="padding-left:18px;margin:8px 0">${list}</ul>`,
+      { label: "Open the Tack Room", url },
+    ),
+  };
+}
+
+/* ---------------- Billing lifecycle ---------------- */
+export function paidWelcomeEmail(name: string, planLabel: string, url = `${SITE}/app`): Mail {
+  const n = name ? `, ${name}` : "";
+  return {
+    to: "",
+    subject: `Welcome to ${planLabel} — 8 Seconds`,
+    text: `You're on ${planLabel} now${n}. Thank you for backing the hub — everything's unlocked.\n\n${url}\n\n— 8 Seconds`,
+    html: shell(
+      `Welcome to ${escapeHtml(planLabel)}.`,
+      `<p>Thank you for backing 8 Seconds${n ? `${escapeHtml(n)}` : ""}. Your plan is active and everything's unlocked — qualifying ladders, the Tack Room, sponsor tools, and more.</p>`,
+      { label: "Open your barn", url },
+    ),
+  };
+}
+
+export function paymentFailedEmail(name: string, url = `${SITE}/app/more`): Mail {
+  return {
+    to: "",
+    subject: "Action needed: your 8 Seconds payment didn't go through",
+    text: `We couldn't process your latest 8 Seconds payment${name ? `, ${name}` : ""}. No panic — your barn is safe. Please update your card so nothing lapses:\n${url}\n\n— 8 Seconds`,
+    html: shell(
+      "Your payment didn't go through",
+      `<p>We couldn't process your latest payment. No panic — your barn is safe. Update your card and we'll take care of the rest.</p><p style="color:#8a5a3b">Cards expire and banks decline for all sorts of reasons; a quick update usually fixes it.</p>`,
+      { label: "Update payment", url },
+    ),
+  };
+}
+
+export function subCanceledEmail(name: string, endDate?: string): Mail {
+  const when = endDate ? ` on ${new Date(endDate).toLocaleDateString()}` : "";
+  return {
+    to: "",
+    subject: "Your 8 Seconds plan is set to end",
+    text: `Your paid plan is set to end${when}${name ? `, ${name}` : ""}. You'll keep everything until then, and your account stays on the free plan after — your data is safe.\n\nChanged your mind? Reactivate any time: ${SITE}/app/more\n\n— 8 Seconds`,
+    html: shell(
+      "Your plan is winding down",
+      `<p>Your paid plan is set to end${escapeHtml(when)}. You'll keep everything until then; after that your account drops to the free plan and your barn stays put.</p><p>Changed your mind? You can pick right back up any time.</p>`,
+      { label: "Reactivate", url: `${SITE}/app/more` },
+    ),
+  };
+}
+
+export function subPausedEmail(name: string, until?: string): Mail {
+  const when = until ? new Date(until).toLocaleDateString() : "next cycle";
+  return {
+    to: "",
+    subject: "Your 8 Seconds plan is paused",
+    text: `Your plan is paused until ${when}${name ? `, ${name}` : ""}. No charges while it's paused, and nothing's lost. We'll pick right back up.\n\n${SITE}/app/more\n\n— 8 Seconds`,
+    html: shell(
+      "Take the breather.",
+      `<p>Your plan is paused until <strong>${escapeHtml(when)}</strong>. No charges while it's paused, and nothing in your barn is lost.</p>`,
+      { label: "Manage plan", url: `${SITE}/app/more` },
+    ),
+  };
+}
+
+export function renewalReminderEmail(name: string, planLabel: string, renewsAt: string, url = `${SITE}/app/more`): Mail {
+  const when = new Date(renewsAt).toLocaleDateString();
+  return {
+    to: "",
+    subject: `Your ${planLabel} renews soon`,
+    text: `Heads up${name ? `, ${name}` : ""} — your ${planLabel} renews on ${when}. Nothing to do; we just like to keep it honest. Manage any time: ${url}\n\n— 8 Seconds`,
+    html: shell(
+      `${escapeHtml(planLabel)} renews ${escapeHtml(when)}.`,
+      `<p>Just a friendly heads-up — nothing to do. Your plan renews automatically so you never miss a deadline. You can manage or change it any time.</p>`,
+      { label: "Manage plan", url },
+    ),
+  };
+}
+
+/* ---------------- Supply side + ops ---------------- */
+export function submissionReceivedEmail(name: string, eventName: string): Mail {
+  return {
+    to: "",
+    subject: "We got your event — 8 Seconds",
+    text: `Thanks${name ? `, ${name}` : ""} — we received "${eventName}" and our team will review it shortly. We'll be in touch if we need anything.\n\n— 8 Seconds`,
+    html: shell(
+      "Thanks — we got it.",
+      `<p>We received <strong>${escapeHtml(eventName)}</strong> and our team will review it shortly. Getting real events in front of families is the whole point — thank you for adding yours.</p>`,
+    ),
+  };
+}
+
+// Internal ops ping to the admin allowlist (new lead / submission).
+export function adminNotifyEmail(kind: string, summary: string): Mail {
+  return {
+    to: "",
+    subject: `[8s] New ${kind}`,
+    text: `New ${kind}:\n\n${summary}\n\nOpen the CRM: ${SITE}/admin`,
+    html: shell(`New ${escapeHtml(kind)}`, `<p>${escapeHtml(summary).replace(/\n/g, "<br>")}</p>`, { label: "Open the CRM", url: `${SITE}/admin` }),
+  };
+}
+
+/* ---------------- Engagement ---------------- */
+export function winBackEmail(name: string, url = `${SITE}/app`): Mail {
+  return {
+    to: "",
+    subject: "We saved your spot at 8 Seconds",
+    text: `Haven't seen you in a bit${name ? `, ${name}` : ""}. Your barn's exactly how you left it — horses, entries, and the events you were chasing. Deadlines don't wait, so we'll keep watching them for you.\n\nPick back up: ${url}\n\nAnything we can help with? Just reply.\n\n— 8 Seconds`,
+    html: shell(
+      "Your barn's right where you left it.",
+      `<p>Haven't seen you in a bit. Everything's saved — your horses, your entries, and the rodeos you were chasing. Deadlines don't wait, so we'll keep watching them for you.</p><p style="color:#8a5a3b">Anything we can help with? Just reply — a real person reads these.</p>`,
+      { label: "Pick back up", url },
+    ),
+  };
+}
+
+// Send an ops email to every address in the ADMIN_EMAILS allowlist.
+export async function notifyAdmins(env: Env, mail: Mail): Promise<void> {
+  const admins = (env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
+  for (const to of admins) {
+    try {
+      await sendMail(env, { ...mail, to });
+    } catch (e) {
+      console.error("notifyAdmins", to, e);
+    }
+  }
 }

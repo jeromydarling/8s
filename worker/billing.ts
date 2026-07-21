@@ -16,6 +16,20 @@ import type { Context } from "hono";
 import type { Env } from "./index";
 import { currentUserId } from "./auth";
 import { stripe, stripeGet, StripeError, verifyStripeWebhook } from "./stripe";
+import { paidWelcomeEmail, paymentFailedEmail, sendMail, subCanceledEmail, subPausedEmail } from "./email";
+
+// Look up a user's contact by id or Stripe customer, for lifecycle emails.
+async function contactBy(
+  db: D1Database,
+  by: { userId?: string; customerId?: string },
+): Promise<{ id: string; email: string; name: string } | null> {
+  const row = by.userId
+    ? await db.prepare("SELECT id, email, name FROM users WHERE id = ?").bind(by.userId).first()
+    : by.customerId
+      ? await db.prepare("SELECT id, email, name FROM users WHERE stripe_customer_id = ?").bind(by.customerId).first()
+      : null;
+  return row ? { id: String((row as { id: string }).id), email: String((row as { email: string }).email), name: String((row as { name: string | null }).name ?? "") } : null;
+}
 
 type PlanId = "family" | "pro" | "associations";
 
@@ -216,6 +230,8 @@ export async function postPause(c: Context<{ Bindings: Env }>): Promise<Response
   }
   const until = new Date(resumesAt * 1000).toISOString();
   await db.prepare("UPDATE users SET plan_status = 'paused', paused_until = ? WHERE id = ?").bind(until, ctx.userId).run();
+  const pu = await contactBy(db, { userId: ctx.userId });
+  if (pu) c.executionCtx.waitUntil(sendMail(c.env, { ...subPausedEmail(pu.name, until), to: pu.email }).then(() => undefined).catch(() => undefined));
   return c.json({ ok: true, paused_until: until });
 }
 
@@ -234,6 +250,8 @@ export async function postDowngrade(c: Context<{ Bindings: Env }>): Promise<Resp
     throw e;
   }
   await db.prepare("UPDATE users SET plan_status = 'canceling' WHERE id = ?").bind(ctx.userId).run();
+  const du = await contactBy(db, { userId: ctx.userId });
+  if (du) c.executionCtx.waitUntil(sendMail(c.env, { ...subCanceledEmail(du.name), to: du.email }).then(() => undefined).catch(() => undefined));
   return c.json({ ok: true });
 }
 
@@ -265,6 +283,9 @@ export async function postWebhook(c: Context<{ Bindings: Env }>): Promise<Respon
     ((obj.items as { data?: Array<{ current_period_end?: number }> })?.data?.[0]?.current_period_end);
   const renewsAt = periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
 
+  const email = (mail: Parameters<typeof sendMail>[1]) =>
+    c.executionCtx.waitUntil(sendMail(c.env, mail).then(() => undefined).catch(() => undefined));
+
   if (
     type === "checkout.session.completed" ||
     type === "customer.subscription.created" ||
@@ -279,6 +300,11 @@ export async function postWebhook(c: Context<{ Bindings: Env }>): Promise<Respon
         )
         .bind(plan, status ?? null, renewsAt, userId)
         .run();
+      // Welcome email only on the actual purchase, not on every sync update.
+      if (type === "checkout.session.completed") {
+        const u = await contactBy(db, { userId });
+        if (u) email({ ...paidWelcomeEmail(u.name, PLANS[plan as PlanId].label), to: u.email });
+      }
     }
   } else if (type === "customer.subscription.deleted") {
     const userId = meta.user_id;
@@ -287,6 +313,16 @@ export async function postWebhook(c: Context<{ Bindings: Env }>): Promise<Respon
         .prepare("UPDATE users SET plan = 'free', plan_status = 'canceled', lifecycle = 'churned' WHERE id = ?")
         .bind(userId)
         .run();
+      const u = await contactBy(db, { userId });
+      if (u) email({ ...subCanceledEmail(u.name), to: u.email });
+    }
+  } else if (type === "invoice.payment_failed") {
+    // Card declined / renewal failed — flag past_due and nudge to update payment.
+    const customerId = obj.customer as string | undefined;
+    const u = await contactBy(db, { customerId });
+    if (u) {
+      await db.prepare("UPDATE users SET plan_status = 'past_due' WHERE id = ?").bind(u.id).run();
+      email({ ...paymentFailedEmail(u.name), to: u.email });
     }
   }
 

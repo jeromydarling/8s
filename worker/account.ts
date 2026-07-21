@@ -8,7 +8,10 @@ import {
   sessionCookie,
   verifyPassword,
 } from "./auth";
-import { resetEmail, sendMail, verifyEmail, welcomeEmail, welcomeVerifyEmail } from "./email";
+import {
+  adminNotifyEmail, notifyAdmins, passwordChangedEmail, resetEmail, sendMail,
+  submissionReceivedEmail, verifyEmail, welcomeEmail, welcomeVerifyEmail,
+} from "./email";
 import { clientIp, rateLimit, tokenOk } from "./guard";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -178,6 +181,15 @@ export async function performReset(c: Context<{ Bindings: Env }>): Promise<Respo
     db.prepare("UPDATE users SET pass_hash = ?, salt = ?, email_verified = 1 WHERE id = ?").bind(hash, salt, row.user_id),
     db.prepare("UPDATE email_tokens SET used_at = ? WHERE token = ?").bind(now(), token),
   ]);
+  // Security hygiene: confirm the change by email (best-effort).
+  c.executionCtx.waitUntil(
+    (async () => {
+      const u = (await db.prepare("SELECT email, name FROM users WHERE id = ?").bind(row.user_id).first()) as
+        | { email: string; name: string | null }
+        | null;
+      if (u) await sendMail(c.env, { ...passwordChangedEmail(u.name ?? ""), to: u.email }).catch(() => false);
+    })(),
+  );
   // Sign them in.
   const session = await createSession(c.env, row.user_id);
   c.header("Set-Cookie", sessionCookie(session));
@@ -428,6 +440,21 @@ export async function submitEvent(c: Context<{ Bindings: Env }>): Promise<Respon
       String(b.source_url ?? ""), "pending", now(),
     )
     .run();
+
+  // Confirm to the submitter + ping the admin inbox (best-effort).
+  const contact = String(b.contact_email ?? "").trim();
+  const eventName = String(b.name).slice(0, 200);
+  c.executionCtx.waitUntil(
+    (async () => {
+      if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contact)) {
+        await sendMail(c.env, { ...submissionReceivedEmail("", eventName), to: contact }).catch(() => false);
+      }
+      await notifyAdmins(
+        c.env,
+        adminNotifyEmail("event submission", `${eventName}\n${String(b.city)}, ${String(b.state)}\nContact: ${contact || "—"}`),
+      );
+    })(),
+  );
   return c.json({ ok: true });
 }
 

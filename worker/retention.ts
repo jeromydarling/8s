@@ -1,7 +1,9 @@
 import type { Context } from "hono";
 import type { Env } from "./index";
 import { currentUserId } from "./auth";
-import { recapEmail, sendMail } from "./email";
+import { recapEmail, renewalReminderEmail, sendMail } from "./email";
+
+const PLAN_LABEL: Record<string, string> = { family: "Arena Family", pro: "Arena Pro", associations: "Associations" };
 
 // Retention: make the value visible. "Your Season" surfaces what a family has
 // actually gotten from the hub — the antidote to the silent "why am I paying?"
@@ -69,6 +71,38 @@ export function recapLines(r: Recap): string[] {
   else if (r.alerts) lines.push(`${r.alerts} alert${r.alerts === 1 ? "" : "s"} sent your way`);
   lines.push(`${r.memberDays} day${r.memberDays === 1 ? "" : "s"} riding with 8 Seconds`);
   return lines;
+}
+
+// Daily cron: remind paid accounts whose renewal is within 7 days, once per
+// cycle (renewal_reminded_at dedups: only remind if we haven't already reminded
+// for this cycle's window).
+export async function runRenewalReminders(env: Env): Promise<number> {
+  if (!env.DB) return 0;
+  const soon = new Date(Date.now() + 7 * DAY).toISOString();
+  const nowIso = new Date().toISOString();
+  const { results } = await env.DB.prepare(
+    `SELECT id, email, name, plan, plan_renews_at FROM users
+       WHERE plan != 'free'
+         AND plan_status IN ('active','trialing')
+         AND plan_renews_at IS NOT NULL
+         AND plan_renews_at > ?1 AND plan_renews_at <= ?2
+         AND (renewal_reminded_at IS NULL OR renewal_reminded_at < datetime(plan_renews_at, '-14 days'))`,
+  )
+    .bind(nowIso, soon)
+    .all();
+  const users = (results ?? []) as unknown as Array<{ id: string; email: string; name: string | null; plan: string; plan_renews_at: string }>;
+  let sent = 0;
+  for (const u of users) {
+    try {
+      const label = PLAN_LABEL[u.plan] ?? "your plan";
+      await sendMail(env, { ...renewalReminderEmail(u.name ?? "", label, u.plan_renews_at), to: u.email });
+      await env.DB.prepare("UPDATE users SET renewal_reminded_at = ? WHERE id = ?").bind(nowIso, u.id).run();
+      sent++;
+    } catch (e) {
+      console.error("renewal reminder", u.id, e);
+    }
+  }
+  return sent;
 }
 
 // Monthly cron: email active/engaged accounts their recap. Skips brand-new and

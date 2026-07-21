@@ -79,7 +79,7 @@ export function computeHealth(s: HealthSignals): Health {
 export async function runHealthScoring(env: Env): Promise<number> {
   if (!env.DB) return 0;
   const { results } = await env.DB.prepare(
-    `SELECT u.id, u.created_at, u.last_active_at, u.email_verified, u.plan, u.plan_status, u.paused_until, u.lifecycle,
+    `SELECT u.id, u.email, u.name, u.created_at, u.last_active_at, u.email_verified, u.plan, u.plan_status, u.paused_until, u.lifecycle,
        (SELECT COUNT(*) FROM contestants_u c WHERE c.user_id = u.id) AS kids,
        (SELECT COUNT(*) FROM horses_u h WHERE h.user_id = u.id) AS horses,
        (SELECT COUNT(*) FROM watchlist w WHERE w.user_id = u.id) AS watches,
@@ -87,7 +87,8 @@ export async function runHealthScoring(env: Env): Promise<number> {
      FROM users u`,
   ).all();
 
-  const rows = (results ?? []) as unknown as Array<HealthSignals & { id: string; lifecycle: string }>;
+  const rows = (results ?? []) as unknown as Array<HealthSignals & { id: string; lifecycle: string; email: string; name: string | null }>;
+  const newlyAtRisk: Array<{ email: string; name: string }> = [];
   const updates = rows.map((r) => {
     const h = computeHealth(r);
     // Don't override terminal/manual stages (churned, won_back, lead, trial);
@@ -96,8 +97,23 @@ export async function runHealthScoring(env: Env): Promise<number> {
     if (r.plan_status === "canceled") lifecycle = "churned";
     else if (lifecycle === "active" && h.atRisk) lifecycle = "at_risk";
     else if (lifecycle === "at_risk" && !h.atRisk) lifecycle = "active";
+    // First time an active account slips to at_risk → queue one win-back nudge.
+    if (r.lifecycle === "active" && lifecycle === "at_risk" && r.email) {
+      newlyAtRisk.push({ email: r.email, name: r.name ?? "" });
+    }
     return env.DB!.prepare("UPDATE users SET health_score = ?, lifecycle = ? WHERE id = ?").bind(h.score, lifecycle, r.id);
   });
   if (updates.length) await env.DB.batch(updates);
+
+  if (newlyAtRisk.length) {
+    const { sendMail, winBackEmail } = await import("./email");
+    for (const u of newlyAtRisk) {
+      try {
+        await sendMail(env, { ...winBackEmail(u.name), to: u.email });
+      } catch (e) {
+        console.error("winback", u.email, e);
+      }
+    }
+  }
   return updates.length;
 }
