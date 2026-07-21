@@ -43,6 +43,8 @@ function page({ title, description, path, body, jsonld }) {
 <link rel="canonical" href="${SITE}${path}">
 <meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}">
 <meta property="og:url" content="${SITE}${path}"><meta property="og:type" content="website">
+<meta property="og:site_name" content="8 Seconds"><meta property="og:image" content="${SITE}/og.png">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${SITE}/og.png">
 <link rel="icon" href="/favicon.svg">
 ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script>` : ""}
 <style>body{font-family:Inter,system-ui,sans-serif;max-width:760px;margin:0 auto;padding:2rem 1.25rem;color:#2b1d12;background:#faf4e8;line-height:1.5}a{color:#b8502b}h1{font-family:Oswald,sans-serif;font-size:2rem;line-height:1.05}.card{border:1px solid rgba(138,90,59,.2);border-radius:14px;padding:1rem;margin:.75rem 0;background:#fff8}.cta{display:inline-block;background:#b8502b;color:#faf4e8;padding:.7rem 1.4rem;border-radius:999px;text-decoration:none;font-weight:700;margin-top:1rem}.muted{color:#2b1d12aa;font-size:.9rem}</style>
@@ -153,15 +155,17 @@ await writeFile(
 );
 count++;
 
-// Sitemap covering home, app, submit, and every generated SEO page.
-const urls = [`${SITE}/`, `${SITE}/app`, `${SITE}/submit`, `${SITE}/rodeos/`];
+// Sitemap covering the indexable content pages (not /app — that's the gated
+// SPA, not crawlable content) + every generated SEO page, with lastmod.
+const lastmod = new Date().toISOString().slice(0, 10);
+const urls = [`${SITE}/`, `${SITE}/submit`, `${SITE}/rodeos/`];
 for (const [st, list] of Object.entries(byState)) {
   urls.push(`${SITE}/rodeos/${st}/`);
   for (const e of list) urls.push(`${SITE}/rodeos/${st}/${slug(`${e.name}-${e.city}`)}`);
 }
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls.map((u) => `  <url><loc>${u}</loc></url>`).join("\n")}
+${urls.map((u) => `  <url><loc>${u}</loc><lastmod>${lastmod}</lastmod></url>`).join("\n")}
 </urlset>`;
 await writeFile(new URL("../public/sitemap.xml", import.meta.url), sitemap);
 

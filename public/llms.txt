@@ -1,0 +1,37 @@
+# 8 Seconds
+
+> The hub built by a rodeo family, for rodeo families. 8 Seconds brings youth
+> rodeo into one place: every event, every qualifying ladder, every horse, and
+> every arena worth fighting for — with deadline alerts so families never miss a
+> draw. Mobile-first, women and girls at the center, and the horse treated as a
+> first-class athlete.
+
+## What it does
+- **The Draw** (/app/draw): a unified youth-rodeo event feed across associations,
+  with filters, entry-deadline countdowns, one-tap entry, and a trip-planning map.
+- **The Buckle Board** (/app/buckle): per-contestant qualifying ladders, points,
+  stages, and deadlines toward district/state finals.
+- **The Tack Room** (/app/tack): family + horse profiles, farrier/vet reminders,
+  and a run log — the horse tracked like the athlete it is.
+- **The Sponsor Pen** (/app/sponsor): a shareable media kit, sponsor tiers, and
+  deliverable tracking for young athletes building a brand.
+- **The Gatepost** (/app/gatepost): arena-preservation advocacy — an endangered
+  map, petitions, and community organizing to keep local arenas open.
+- **Import (AI)** (/app/import): paste results in any format and AI turns them
+  into clean rodeo records.
+
+## Plans
+- **Free** — the Draw feed, the Gatepost, and a basic horse profile.
+- **Arena Family** — $79/year — unlimited kids + horses, Buckle Board, Tack Room
+  reminders, and a season budget tracker.
+- **Arena Pro** — $19.99/month — everything in Family plus the Sponsor Pen
+  toolkit, a media-kit generator, and sponsor recap reports.
+- **Associations** — from $49/month — event management, member database, and draw
+  tools for youth-rodeo associations.
+
+## Key links
+- Home: https://8s.rodeo/
+- The app: https://8s.rodeo/app
+- List an event (associations/secretaries): https://8s.rodeo/submit
+- Youth rodeos by state: https://8s.rodeo/rodeos/
+- Contact: help@8s.rodeo
