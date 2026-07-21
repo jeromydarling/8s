@@ -16,6 +16,8 @@ export interface User {
   state?: string;
   email_verified?: number;
   plan?: string;
+  plan_status?: string;
+  plan_renews_at?: string;
   has_billing?: number;
 }
 export interface Contestant {

@@ -44,6 +44,7 @@ function Shell() {
 
       <div className="relative flex min-h-[100svh] flex-1 flex-col md:min-h-0">
         <TopBar />
+        <BillingBanner />
         <VerifyBanner />
         <main className="relative mx-auto w-full max-w-2xl flex-1 px-4 pb-28 pt-4 md:px-8 md:pb-12 md:pt-8">
           {loading && <LoadingState />}
@@ -162,6 +163,31 @@ function TopBar() {
         )}
       </div>
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onAuthed={() => setAuthOpen(false)} intent="Make this your hub" />
+    </div>
+  );
+}
+
+// Billing state banner: a failed payment needs action; pause/cancel are FYI.
+function BillingBanner() {
+  const { user } = useAuth();
+  const [hidden, setHidden] = useState(false);
+  if (!user || hidden) return null;
+  const st = user.plan_status;
+  if (st !== "past_due" && st !== "paused" && st !== "canceling") return null;
+
+  const cfg =
+    st === "past_due"
+      ? { emoji: "⚠️", tone: "border-rust/40 bg-rust/12", text: "Your last payment didn't go through — update your card so nothing lapses.", cta: "Update payment" }
+      : st === "canceling"
+        ? { emoji: "🤠", tone: "border-gold/40 bg-gold/15", text: "Your plan ends at your renewal date. Changed your mind?", cta: "Reactivate" }
+        : { emoji: "⏸️", tone: "border-saddle/30 bg-paper", text: `Your plan is paused${user.plan_renews_at ? ` until ${new Date(user.plan_renews_at).toLocaleDateString()}` : ""}. No charges while paused.`, cta: "Manage plan" };
+
+  return (
+    <div className={cn("flex items-center gap-3 border-b px-4 py-2 text-[12px] text-ink/80", cfg.tone)}>
+      <span className="text-base">{cfg.emoji}</span>
+      <span className="flex-1">{cfg.text}</span>
+      <Link to="/app/more" className="shrink-0 font-semibold text-rust underline-offset-2 hover:underline">{cfg.cta}</Link>
+      <button onClick={() => setHidden(true)} className="shrink-0 text-ink/40" aria-label="Dismiss">✕</button>
     </div>
   );
 }

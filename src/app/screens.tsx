@@ -65,6 +65,57 @@ function SeasonRecapCard() {
   );
 }
 
+/* Real farrier/vet reminders from the signed-in family's own horses. Renders
+   only when something's actually coming due, so it never shows an empty state. */
+function CareRemindersCard() {
+  const { user, horses } = useAuth();
+  if (!user) return null;
+  const today = Date.now();
+  const due: { label: string; kind: string; days: number }[] = [];
+  for (const h of horses) {
+    for (const [field, kind] of [["farrier_due", "Farrier"], ["vet_due", "Vet / Coggins"]] as const) {
+      const d = (h[field] ?? "").trim();
+      if (!d) continue;
+      const t = new Date(d.length <= 10 ? `${d}T00:00:00` : d).getTime();
+      if (Number.isNaN(t)) continue;
+      const days = Math.round((t - today) / 86400000);
+      if (days < -3 || days > 30) continue;
+      due.push({ label: h.barn_name || h.name, kind, days });
+    }
+  }
+  if (!due.length) return null;
+  due.sort((a, b) => a.days - b.days);
+  return (
+    <div className="mb-4">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="font-display text-lg font-bold text-ink">Barn reminders</h2>
+        <Link to="/app/tack" className="text-[11px] font-semibold text-rust">Tack Room →</Link>
+      </div>
+      <Stagger>
+        {due.slice(0, 4).map((d, i) => {
+          const overdue = d.days < 0;
+          const soon = d.days <= 7;
+          return (
+            <StaggerItem key={i}>
+              <Link to="/app/tack">
+                <Card onClick={() => {}} className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-9 w-9 place-items-center rounded-full bg-sage/15 text-sm text-sage-deep">🐴</span>
+                    <span className="text-sm font-semibold text-ink">{d.label} — {d.kind}</span>
+                  </div>
+                  <span className={cn("text-xs font-semibold", overdue ? "text-rust" : soon ? "text-gold" : "text-ink/50")}>
+                    {overdue ? `${Math.abs(d.days)}d overdue` : d.days === 0 ? "today" : `in ${d.days}d`}
+                  </span>
+                </Card>
+              </Link>
+            </StaggerItem>
+          );
+        })}
+      </Stagger>
+    </div>
+  );
+}
+
 /* ================= TODAY ================= */
 export function TodayScreen() {
   const { data } = useDemo();
@@ -100,6 +151,8 @@ export function TodayScreen() {
       <ScreenHeader eyebrow={eyebrow} title={`Howdy, ${name}.`} />
 
       <SeasonRecapCard />
+
+      <CareRemindersCard />
 
       <Card className="mb-4 bg-gradient-to-br from-leather to-ink text-bone">
         <div className="text-[11px] uppercase tracking-widest text-gold">{user ? "Sample season" : "This season together"}</div>

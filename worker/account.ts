@@ -226,7 +226,7 @@ export async function me(c: Context<{ Bindings: Env }>): Promise<Response> {
   if (!db || !id) return c.json({ user: null });
   const u = (await db
     .prepare(
-      "SELECT id, email, name, role, state, home_lat, home_lng, email_verified, plan, stripe_customer_id FROM users WHERE id = ?",
+      "SELECT id, email, name, role, state, home_lat, home_lng, email_verified, plan, plan_status, plan_renews_at, stripe_customer_id FROM users WHERE id = ?",
     )
     .bind(id)
     .first()) as Record<string, unknown> | null;
