@@ -121,6 +121,7 @@ export async function postCheckout(c: Context<{ Bindings: Env }>): Promise<Respo
         ...(u.name ? { name: u.name } : {}),
         "metadata[user_id]": u.id,
         "metadata[app_slug]": "8seconds",
+        "metadata[satellite_app]": "8s",
       });
       customerId = cust.id;
       await db
@@ -140,11 +141,13 @@ export async function postCheckout(c: Context<{ Bindings: Env }>): Promise<Respo
       "metadata[user_id]": u.id,
       "metadata[plan]": plan,
       "metadata[app_slug]": "8seconds",
+      "metadata[satellite_app]": "8s",
       // Mirror onto the subscription so customer.subscription.* events carry
       // the same metadata as the checkout session.
       "subscription_data[metadata][user_id]": u.id,
       "subscription_data[metadata][plan]": plan,
       "subscription_data[metadata][app_slug]": "8seconds",
+      "subscription_data[metadata][satellite_app]": "8s",
     });
     if (!session.url) return c.json({ error: "Stripe returned no URL" }, 502);
     return c.json({ url: session.url });
