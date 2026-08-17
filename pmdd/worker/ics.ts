@@ -155,7 +155,7 @@ export function buildFeed(
     'PRODID:-//pmdd-tracker//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    'X-WR-CALNAME:PMDD Protocol',
+    'X-WR-CALNAME:GLORY Protocol',
     'X-WR-TIMEZONE:America/Chicago',
     'X-PUBLISHED-TTL:PT6H',
     VTIMEZONE,

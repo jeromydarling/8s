@@ -3,13 +3,33 @@ import { accessKey, api, type State, type TrendRow } from './api';
 import type { Item } from '../shared/protocol';
 import { Spark } from './Spark';
 import { CycleRing } from './CycleRing';
+import {
+  BoxIcon,
+  ChartIcon,
+  GloryMark,
+  HeartIcon,
+  ITEM_ICON,
+  MoonIcon,
+  SunIcon,
+  ThemeGlyph,
+} from './icons';
+import { applyTheme, nextTheme, storedTheme, type ThemeMode } from './theme';
 
 type Tab = 'home' | 'checkin' | 'insights' | 'cycle' | 'supplies';
+
+const NAV: [Tab, string, ({ size }: { size?: number }) => React.ReactNode][] = [
+  ['home', 'Today', SunIcon],
+  ['checkin', 'Check-in', HeartIcon],
+  ['insights', 'Insights', ChartIcon],
+  ['cycle', 'Cycle', MoonIcon],
+  ['supplies', 'Supplies', BoxIcon],
+];
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('home');
   const [state, setState] = useState<State | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<ThemeMode>(storedTheme);
 
   const refresh = useCallback(() => {
     api
@@ -29,8 +49,29 @@ export default function App() {
 
   useEffect(refresh, [refresh]);
 
+  function cycleTheme() {
+    const next = nextTheme(theme);
+    setTheme(next);
+    applyTheme(next);
+  }
+
   return (
     <div className="shell">
+      <div className="topbar">
+        <span className="wordmark">
+          <GloryMark />
+          <span>GLORY</span>
+        </span>
+        <button
+          className="theme-btn"
+          onClick={cycleTheme}
+          aria-label={`Theme: ${theme}. Tap to change.`}
+          title={`Theme: ${theme}`}
+        >
+          <ThemeGlyph mode={theme} />
+        </button>
+      </div>
+
       {error && <div className="card">{error}</div>}
 
       {state && tab === 'home' && <Home state={state} refresh={refresh} />}
@@ -40,16 +81,9 @@ export default function App() {
       {state && tab === 'supplies' && <Supplies state={state} refresh={refresh} />}
 
       <nav className="nav" aria-label="Sections">
-        {(
-          [
-            ['home', 'Today'],
-            ['checkin', 'Check-in'],
-            ['insights', 'Insights'],
-            ['cycle', 'Cycle'],
-            ['supplies', 'Supplies'],
-          ] as [Tab, string][]
-        ).map(([id, name]) => (
+        {NAV.map(([id, name, Icon]) => (
           <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
+            <Icon size={20} />
             {name}
           </button>
         ))}
@@ -89,6 +123,7 @@ function Home({ state, refresh }: { state: State; refresh: () => void }) {
   return (
     <>
       <header className="hero">
+        <div className="hero-halo" aria-hidden="true" />
         <p className="hero-greeting">{partOfDay()} —</p>
         <h1 className="hero-title">Take your life back.</h1>
         <p className="hero-sub">{prettyDate(state.date)}</p>
@@ -119,16 +154,23 @@ function Home({ state, refresh }: { state: State; refresh: () => void }) {
           {patches.length} patches this morning{doses.some((d) => d.item === 'd3k2') ? ' · D3 day' : ''} — off
           again by evening.
         </p>
-        {doses.map((d) => (
-          <label key={d.item} className={`dose ${d.done ? 'done' : ''} ${d.optional ? 'optional' : ''}`}>
-            <input type="checkbox" checked={d.done} onChange={(e) => toggle(d.item, e.target.checked)} />
-            <span>
-              <span className="dose-label">{d.label}</span>
-              <br />
-              <span className="dose-detail">{d.detail}</span>
-            </span>
-          </label>
-        ))}
+        {doses.map((d) => {
+          const Icon = ITEM_ICON[d.item];
+          const chip = d.item === 'sp6' ? 'plum' : d.item === 'elix' || d.item === 'elix_extra' || d.item === 'd3k2' ? 'neutral' : '';
+          return (
+            <label key={d.item} className={`dose ${d.done ? 'done' : ''} ${d.optional ? 'optional' : ''}`}>
+              <input type="checkbox" checked={d.done} onChange={(e) => toggle(d.item, e.target.checked)} />
+              <span className={`dose-chip ${chip}`}>
+                <Icon size={20} />
+              </span>
+              <span>
+                <span className="dose-label">{d.label}</span>
+                <br />
+                <span className="dose-detail">{d.detail}</span>
+              </span>
+            </label>
+          );
+        })}
         <p className="note">
           Check things off if you like the satisfaction — nothing bad happens if you don't. Patches go on
           clean, dry skin; keep water nearby all day.

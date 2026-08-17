@@ -1,4 +1,7 @@
-# PMDD Protocol Tracker
+# GLORY — PMDD Protocol Tracker
+
+"A return to glory." Installable PWA (Add to Home Screen shows it as GLORY)
+with light/night themes — auto by default, manual toggle in the top bar.
 
 Standalone Cloudflare Worker app (separate from the 8s rodeo Worker): a daily
 tracker for a cycle-anchored PMDD protocol — LifeWave patches (Y-Age Aeon /
