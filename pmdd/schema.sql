@@ -37,6 +37,30 @@ CREATE TABLE IF NOT EXISTS supplies (
   opened_date TEXT NOT NULL -- YYYY-MM-DD
 );
 
+-- Free-form daily journal. Multiple entries per day are fine.
+CREATE TABLE IF NOT EXISTS journal (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL, -- YYYY-MM-DD
+  text TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Foods/drinks to avoid — the learned "steer clear" list. Avoid-only by design.
+CREATE TABLE IF NOT EXISTS avoid_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Cached AI synthesis of the journal ("the story so far").
+CREATE TABLE IF NOT EXISTS story (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  text TEXT NOT NULL,
+  entry_count INTEGER NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 INSERT OR IGNORE INTO settings (id, cycle_len, luteal_start) VALUES (1, 28, 15);
 -- Anchor: client's most recent period start.
 INSERT OR IGNORE INTO cycles (start_date) VALUES ('2026-08-07');

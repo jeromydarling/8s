@@ -71,6 +71,21 @@ export const DropIcon = ({ size }: { size?: number }) => (
   </I>
 );
 
+export const BookIcon = ({ size }: { size?: number }) => (
+  <I size={size}>
+    <path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v15.5H7.5A2.5 2.5 0 0 0 5 21V5.5Z" />
+    <path d="M5 18.5A2.5 2.5 0 0 1 7.5 16H19" />
+    <path d="M9 7.5h6" />
+  </I>
+);
+
+export const BanIcon = ({ size }: { size?: number }) => (
+  <I size={size}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M6 6l12 12" />
+  </I>
+);
+
 export const CalendarIcon = ({ size }: { size?: number }) => (
   <I size={size}>
     <rect x="4" y="5.5" width="16" height="15" rx="2.5" />

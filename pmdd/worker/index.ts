@@ -15,6 +15,7 @@ interface Env {
   ASSETS: Fetcher;
   TIMEZONE: string;
   ACCESS_KEY?: string;
+  AI?: Ai; // optional — journal story degrades gracefully without it
 }
 
 const ITEMS: Item[] = ['aeon', 'glutathione', 'carnosine', 'sp6', 'elix', 'elix_extra', 'd3k2'];
@@ -86,6 +87,9 @@ app.get('/api/state', async (c) => {
   const done = new Set(doneRows.map((r) => r.item));
   const checkin = await db.prepare('SELECT * FROM checkins WHERE date = ?').bind(date).first();
   const supplies = await loadSupplies(db, today, settings);
+  const { results: avoid } = await db
+    .prepare('SELECT id, label, note FROM avoid_items ORDER BY created_at DESC')
+    .all<{ id: number; label: string; note: string }>();
   return c.json({
     today,
     date,
@@ -94,6 +98,7 @@ app.get('/api/state', async (c) => {
     checkin,
     supplies,
     cycleStarts: starts,
+    avoid,
   });
 });
 
@@ -199,6 +204,102 @@ app.get('/api/trends', async (c) => {
       };
     });
   return c.json({ today, rows });
+});
+
+// ---- journal + story ----
+
+app.get('/api/journal', async (c) => {
+  const db = c.env.DB;
+  const { results: entries } = await db
+    .prepare('SELECT id, date, text, created_at FROM journal ORDER BY date DESC, id DESC LIMIT 100')
+    .all<{ id: number; date: string; text: string; created_at: string }>();
+  const story = await db
+    .prepare('SELECT text, entry_count, updated_at FROM story WHERE id = 1')
+    .first<{ text: string; entry_count: number; updated_at: string }>();
+  return c.json({ entries, story: story ?? null, aiAvailable: Boolean(c.env.AI) });
+});
+
+app.post('/api/journal', async (c) => {
+  const b = await c.req.json<{ date?: string; text?: string }>();
+  const text = typeof b.text === 'string' ? b.text.trim().slice(0, 4000) : '';
+  if (!DATE_RE.test(b.date ?? '') || !text) return c.json({ error: 'bad_request' }, 400);
+  await c.env.DB.prepare('INSERT INTO journal (date, text) VALUES (?, ?)').bind(b.date, text).run();
+  return c.json({ ok: true });
+});
+
+app.delete('/api/journal/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id)) return c.json({ error: 'bad_request' }, 400);
+  await c.env.DB.prepare('DELETE FROM journal WHERE id = ?').bind(id).run();
+  return c.json({ ok: true });
+});
+
+const STORY_MODEL = '@cf/meta/llama-3.1-8b-instruct';
+
+app.post('/api/journal/story', async (c) => {
+  if (!c.env.AI) return c.json({ error: 'ai_not_available' }, 503);
+  const db = c.env.DB;
+  const [settings, starts] = await Promise.all([loadSettings(db), loadStarts(db)]);
+  const { results: entries } = await db
+    .prepare('SELECT date, text FROM journal ORDER BY date ASC, id ASC')
+    .all<{ date: string; text: string }>();
+  if (entries.length === 0) return c.json({ error: 'no_entries' }, 400);
+
+  const recent = entries.slice(-40);
+  const lines = recent.map((e) => {
+    const info = cycleInfo(e.date, starts, settings);
+    const ctx = info ? `cycle day ${info.day}, ${info.phase}` : 'cycle unknown';
+    return `[${e.date} · ${ctx}] ${e.text.slice(0, 500)}`;
+  });
+
+  try {
+    const result = (await c.env.AI.run(STORY_MODEL as Parameters<Ai['run']>[0], {
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are the narrator inside GLORY, a private wellness journal for one woman managing PMDD. ' +
+            'From her dated entries, write "the story so far": 3–5 short warm paragraphs in second person ("you"). ' +
+            'Ground it in what she actually wrote; weave in where she was in her cycle when patterns matter. ' +
+            'Name real progress and honestly acknowledge hard stretches without dwelling. Never shame gaps in the record, ' +
+            'never give medical advice or mention medications/diagnoses beyond her own words, never invent events. ' +
+            'End with one sentence that looks forward. No headings, no lists, no preamble — just the story.',
+        },
+        { role: 'user', content: lines.join('\n') },
+      ],
+      max_tokens: 700,
+    })) as { response?: string };
+    const text = (result.response ?? '').trim();
+    if (!text) return c.json({ error: 'empty_response' }, 502);
+    await db
+      .prepare(
+        `INSERT INTO story (id, text, entry_count, updated_at) VALUES (1, ?, ?, datetime('now'))
+         ON CONFLICT (id) DO UPDATE SET text = excluded.text, entry_count = excluded.entry_count, updated_at = datetime('now')`,
+      )
+      .bind(text, entries.length)
+      .run();
+    return c.json({ story: { text, entry_count: entries.length } });
+  } catch {
+    return c.json({ error: 'ai_failed' }, 502);
+  }
+});
+
+// ---- avoid list (deliberately avoid-only: no "good foods" scorekeeping) ----
+
+app.post('/api/avoid', async (c) => {
+  const b = await c.req.json<{ label?: string; note?: string }>();
+  const label = typeof b.label === 'string' ? b.label.trim().slice(0, 80) : '';
+  const note = typeof b.note === 'string' ? b.note.trim().slice(0, 200) : '';
+  if (!label) return c.json({ error: 'bad_request' }, 400);
+  await c.env.DB.prepare('INSERT INTO avoid_items (label, note) VALUES (?, ?)').bind(label, note).run();
+  return c.json({ ok: true });
+});
+
+app.delete('/api/avoid/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id)) return c.json({ error: 'bad_request' }, 400);
+  await c.env.DB.prepare('DELETE FROM avoid_items WHERE id = ?').bind(id).run();
+  return c.json({ ok: true });
 });
 
 // ---- iCal feed (key in query — calendar clients can't send cookies) ----

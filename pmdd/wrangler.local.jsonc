@@ -1,5 +1,8 @@
 {
-  // PMDD protocol tracker — standalone Worker, deployed separately from the 8s app.
+  // Local-dev config: identical to wrangler.jsonc but WITHOUT the AI binding,
+  // so `wrangler dev` runs fully offline (the AI binding requires a remote
+  // proxy session). Use: npx wrangler dev --config wrangler.local.jsonc
+  // This also exercises the app's no-AI graceful-degradation path.
   "name": "pmdd",
   "main": "worker/index.ts",
   "compatibility_date": "2026-08-01",
@@ -7,9 +10,6 @@
     "directory": "dist",
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/calendar.ics"]
-  },
-  "ai": {
-    "binding": "AI"
   },
   "d1_databases": [
     {
@@ -21,6 +21,4 @@
   "vars": {
     "TIMEZONE": "America/Chicago"
   }
-  // Secrets (wrangler secret put):
-  //   ACCESS_KEY — shared-link key. All routes fail closed (503) when unset.
 }

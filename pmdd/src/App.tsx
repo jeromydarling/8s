@@ -4,6 +4,8 @@ import type { Item } from '../shared/protocol';
 import { Spark } from './Spark';
 import { CycleRing } from './CycleRing';
 import {
+  BanIcon,
+  BookIcon,
   BoxIcon,
   ChartIcon,
   GloryMark,
@@ -14,12 +16,14 @@ import {
   ThemeGlyph,
 } from './icons';
 import { applyTheme, nextTheme, storedTheme, type ThemeMode } from './theme';
+import type { JournalEntry, Story } from './api';
 
-type Tab = 'home' | 'checkin' | 'insights' | 'cycle' | 'supplies';
+type Tab = 'home' | 'checkin' | 'journal' | 'insights' | 'cycle' | 'supplies';
 
 const NAV: [Tab, string, ({ size }: { size?: number }) => React.ReactNode][] = [
   ['home', 'Today', SunIcon],
   ['checkin', 'Check-in', HeartIcon],
+  ['journal', 'Journal', BookIcon],
   ['insights', 'Insights', ChartIcon],
   ['cycle', 'Cycle', MoonIcon],
   ['supplies', 'Supplies', BoxIcon],
@@ -76,6 +80,7 @@ export default function App() {
 
       {state && tab === 'home' && <Home state={state} refresh={refresh} />}
       {state && tab === 'checkin' && <CheckIn state={state} refresh={refresh} />}
+      {state && tab === 'journal' && <Journal today={state.today} />}
       {tab === 'insights' && <Insights />}
       {state && tab === 'cycle' && <Cycle state={state} refresh={refresh} />}
       {state && tab === 'supplies' && <Supplies state={state} refresh={refresh} />}
@@ -176,6 +181,139 @@ function Home({ state, refresh }: { state: State; refresh: () => void }) {
           clean, dry skin; keep water nearby all day.
         </p>
       </section>
+
+      {state.avoid.length > 0 && (
+        <section className="card">
+          <h2>
+            <BanIcon size={15} /> Steering clear of
+          </h2>
+          <div className="avoid-strip">
+            {state.avoid.map((a) => (
+              <span className="avoid-chip" key={a.id} title={a.note || undefined}>
+                <BanIcon size={13} /> {a.label}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
+// ---- Journal ----
+
+function prettyShort(iso: string): string {
+  return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function Journal({ today }: { today: string }) {
+  const [entries, setEntries] = useState<JournalEntry[] | null>(null);
+  const [story, setStory] = useState<Story | null>(null);
+  const [aiAvailable, setAiAvailable] = useState(true);
+  const [draft, setDraft] = useState('');
+  const [telling, setTelling] = useState(false);
+  const [storyErr, setStoryErr] = useState(false);
+
+  const load = useCallback(() => {
+    api
+      .journal()
+      .then((r) => {
+        setEntries(r.entries);
+        setStory(r.story);
+        setAiAvailable(r.aiAvailable);
+      })
+      .catch(() => setEntries([]));
+  }, []);
+  useEffect(load, [load]);
+
+  async function save() {
+    const text = draft.trim();
+    if (!text) return;
+    await api.addJournal(today, text);
+    setDraft('');
+    load();
+  }
+
+  async function retell() {
+    setTelling(true);
+    setStoryErr(false);
+    try {
+      const r = await api.tellStory();
+      setStory(r.story);
+    } catch {
+      setStoryErr(true);
+    } finally {
+      setTelling(false);
+    }
+  }
+
+  const newSinceStory = entries && story ? entries.length - story.entry_count : 0;
+
+  return (
+    <>
+      <section className="card story-card">
+        <h2>
+          <BookIcon size={15} /> The story so far
+        </h2>
+        {story ? (
+          <>
+            <div className="story-text">
+              {story.text.split(/\n{1,}/).map((p, i) => (
+                <p key={i}>{p}</p>
+              ))}
+            </div>
+            <p className="note">
+              Told from {story.entry_count} {story.entry_count === 1 ? 'entry' : 'entries'}
+              {newSinceStory > 0 ? ` · ${newSinceStory} new since` : ''}
+            </p>
+          </>
+        ) : (
+          <p className="note">
+            Write a few entries and GLORY will weave them into an ongoing story — the arc of what's
+            changing, in plain words, told back to you.
+          </p>
+        )}
+        {aiAvailable ? (
+          entries && entries.length > 0 && (
+            <button className="primary" onClick={retell} disabled={telling}>
+              {telling ? 'Writing…' : story ? 'Retell the story' : 'Tell the story'}
+            </button>
+          )
+        ) : (
+          <p className="note">Story-telling isn't available right now — your entries are safe and it'll pick them all up later.</p>
+        )}
+        {storyErr && <p className="note">Couldn't write the story just now — nothing lost, try again in a bit.</p>}
+      </section>
+
+      <section className="card">
+        <h2>Today's page</h2>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Whatever today held — a line is plenty."
+          aria-label="Journal entry"
+        />
+        <button className="primary" onClick={save} disabled={!draft.trim()}>
+          Add to the story
+        </button>
+      </section>
+
+      {entries && entries.length > 0 && (
+        <section className="card">
+          <h2>Entries</h2>
+          {entries.map((e) => (
+            <div className="journal-entry" key={e.id}>
+              <div className="journal-head">
+                <span className="journal-date">{prettyShort(e.date)}</span>
+                <button className="ghost small" onClick={() => api.removeJournal(e.id).then(load)}>
+                  Remove
+                </button>
+              </div>
+              <p className="journal-text">{e.text}</p>
+            </div>
+          ))}
+        </section>
+      )}
     </>
   );
 }
@@ -211,6 +349,7 @@ function CheckIn({ state, refresh }: { state: State; refresh: () => void }) {
   }
 
   return (
+    <>
     <section className="card">
       <h2>How are you feeling?</h2>
       <p className="note">Thirty seconds, whenever you feel like it. There's no streak here and nothing to break.</p>
@@ -246,6 +385,67 @@ function CheckIn({ state, refresh }: { state: State; refresh: () => void }) {
         Save
       </button>
       {saved && <span className="saved-flash">Saved ✓</span>}
+    </section>
+    <AvoidList state={state} refresh={refresh} />
+    </>
+  );
+}
+
+// ---- Avoid list (avoid-only by design — no "good foods" tracking) ----
+
+function AvoidList({ state, refresh }: { state: State; refresh: () => void }) {
+  const [label, setLabel] = useState('');
+  const [note, setNote] = useState('');
+
+  async function add() {
+    if (!label.trim()) return;
+    await api.addAvoid(label.trim(), note.trim());
+    setLabel('');
+    setNote('');
+    refresh();
+  }
+
+  return (
+    <section className="card">
+      <h2>
+        <BanIcon size={15} /> Steering clear of
+      </h2>
+      <p className="note">
+        When a food or drink turns out to make things worse, park it here. This list is only about what
+        to avoid — what's working doesn't need a scoreboard.
+      </p>
+      {state.avoid.map((a) => (
+        <div className="avoid-row" key={a.id}>
+          <span className="avoid-chip">
+            <BanIcon size={13} /> {a.label}
+          </span>
+          {a.note && <span className="note">{a.note}</span>}
+          <button className="ghost small" onClick={() => api.removeAvoid(a.id).then(refresh)}>
+            Remove
+          </button>
+        </div>
+      ))}
+      <div className="avoid-form">
+        <input
+          type="text"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="e.g. red wine"
+          aria-label="Food or drink to avoid"
+          maxLength={80}
+        />
+        <input
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="why (optional) — e.g. luteal headaches"
+          aria-label="Reason"
+          maxLength={200}
+        />
+        <button className="primary" onClick={add} disabled={!label.trim()}>
+          Add
+        </button>
+      </div>
     </section>
   );
 }

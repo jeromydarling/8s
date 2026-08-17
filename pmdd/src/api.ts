@@ -11,6 +11,25 @@ export interface Checkin {
   notes: string;
 }
 
+export interface AvoidItem {
+  id: number;
+  label: string;
+  note: string;
+}
+
+export interface JournalEntry {
+  id: number;
+  date: string;
+  text: string;
+  created_at: string;
+}
+
+export interface Story {
+  text: string;
+  entry_count: number;
+  updated_at?: string;
+}
+
 export interface State {
   today: string;
   date: string;
@@ -19,6 +38,7 @@ export interface State {
   checkin: Checkin | null;
   supplies: SupplyStatus[];
   cycleStarts: string[];
+  avoid: AvoidItem[];
 }
 
 export interface TrendRow extends Checkin {
@@ -62,4 +82,13 @@ export const api = {
   supply: (item: Item, qty: number, opened: string) =>
     req<{ ok: true }>('/api/supply', { method: 'POST', body: JSON.stringify({ item, qty, opened }) }),
   trends: () => req<{ today: string; rows: TrendRow[] }>('/api/trends'),
+  journal: () =>
+    req<{ entries: JournalEntry[]; story: Story | null; aiAvailable: boolean }>('/api/journal'),
+  addJournal: (date: string, text: string) =>
+    req<{ ok: true }>('/api/journal', { method: 'POST', body: JSON.stringify({ date, text }) }),
+  removeJournal: (id: number) => req<{ ok: true }>(`/api/journal/${id}`, { method: 'DELETE' }),
+  tellStory: () => req<{ story: Story }>('/api/journal/story', { method: 'POST' }),
+  addAvoid: (label: string, note: string) =>
+    req<{ ok: true }>('/api/avoid', { method: 'POST', body: JSON.stringify({ label, note }) }),
+  removeAvoid: (id: number) => req<{ ok: true }>(`/api/avoid/${id}`, { method: 'DELETE' }),
 };

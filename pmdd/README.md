@@ -15,8 +15,18 @@ Balance, and vitamin D3+K2.
   calendar) re-anchors to it. Median of recent cycles refines the length.
 - **Supplies** — dose-level inventory from the check-offs, runout projection,
   reorder pills.
+- **Journal** — free-form daily entries; Workers AI (binding `AI`, model
+  llama-3.1-8b-instruct) retells them on demand as "the story so far," a warm
+  second-person narrative with cycle context. No AI binding → entries still
+  work, story degrades politely.
+- **Avoid list** — foods/drinks that make things worse (avoid-only by design).
+  Managed on Check-in, surfaced read-only on Today.
 - **/calendar.ics** — live iCal feed (subscribe from Google/Apple Calendar):
   morning/evening patch events, phase changes, expected period, reorder alerts.
+
+Local dev in a sandbox without Cloudflare credentials: use
+`npx wrangler dev --config wrangler.local.jsonc` (same config minus the AI
+binding, which otherwise demands a remote proxy session).
 
 ## Deploy
 
