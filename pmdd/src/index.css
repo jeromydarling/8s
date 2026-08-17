@@ -56,6 +56,47 @@ body {
 }
 
 h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+
+.hero { display: flex; flex-direction: column; gap: 2px; padding: 10px 2px 2px; }
+.hero-greeting { color: var(--muted); font-size: 15px; animation: rise 0.45s ease both; }
+.hero-title {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  font-size: clamp(30px, 8vw, 38px);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+  margin: 0;
+  color: var(--plum);
+  animation: rise 0.55s 0.05s ease both;
+}
+.hero-sub { color: var(--muted); font-size: 15px; animation: rise 0.6s 0.12s ease both; }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.home-cycle { align-items: center; text-align: center; animation: rise 0.6s 0.18s ease both; }
+.home-phase { font-size: 14.5px; color: var(--muted); max-width: 42ch; }
+.home-phase strong { color: var(--ink); }
+.ring-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.ring-wrap svg { width: 180px; height: 180px; }
+.ring-progress { transition: stroke 0.4s ease; }
+.ring-legend { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; color: var(--muted); font-size: 12.5px; }
+.ring-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.swatch { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+.working-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.working-chip {
+  background: var(--plum-soft);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.working-chip .delta { color: var(--plum); font-weight: 750; font-size: 22px; font-variant-numeric: tabular-nums; }
+.working-chip .what { font-weight: 650; font-size: 14px; }
+.working-chip .vs { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 h2 { font-size: 15px; margin: 0; color: var(--muted); font-weight: 650; text-transform: uppercase; letter-spacing: 0.08em; }
 p { margin: 0; }
 
@@ -96,6 +137,7 @@ p { margin: 0; }
 }
 .dose:last-child { border-bottom: none; }
 .dose input { width: 22px; height: 22px; accent-color: var(--plum); flex: none; cursor: pointer; }
+.dose .dose-label, .dose .dose-detail { transition: color 0.25s ease; }
 .dose .dose-label { font-weight: 600; }
 .dose .dose-detail { color: var(--muted); font-size: 14px; }
 .dose.done .dose-label { text-decoration: line-through; color: var(--muted); }
@@ -221,4 +263,4 @@ details.data-table th, details.data-table td { text-align: left; padding: 4px 8p
 .saved-flash { color: var(--good); font-size: 14px; font-weight: 600; }
 
 :focus-visible { outline: 2px solid var(--plum); outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

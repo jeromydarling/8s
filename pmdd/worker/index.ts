@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { getCookie, setCookie } from 'hono/cookie';
 import {
   cycleInfo,
   dosesFor,
@@ -23,34 +22,16 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const app = new Hono<{ Bindings: Env }>();
 
-// ---- auth: single shared-link key. Fails closed when unset. ----
-
-function keyOk(c: { req: { query: (k: string) => string | undefined } }, env: Env, cookie?: string): boolean {
-  if (!env.ACCESS_KEY) return false;
-  const presented = c.req.query('k') ?? cookie;
-  return presented === env.ACCESS_KEY;
-}
+// ---- auth: single shared-link key, sent as a header (SPA) or ?k= (feed).
+// The SPA stores the key from the share link in localStorage client-side —
+// static assets are served before the worker, so a cookie flow can't work.
+// Fails closed when the secret is unset. ----
 
 app.use('/api/*', async (c, next) => {
   if (!c.env.ACCESS_KEY) return c.json({ error: 'not_configured' }, 503);
-  if (!keyOk(c, c.env, getCookie(c, 'pmdd_k'))) return c.json({ error: 'unauthorized' }, 401);
+  const presented = c.req.header('x-access-key') ?? c.req.query('k');
+  if (presented !== c.env.ACCESS_KEY) return c.json({ error: 'unauthorized' }, 401);
   await next();
-});
-
-// Landing with ?k=… : set the cookie, then serve the SPA cleanly.
-app.get('/', async (c) => {
-  const k = c.req.query('k');
-  if (k && c.env.ACCESS_KEY && k === c.env.ACCESS_KEY) {
-    setCookie(c, 'pmdd_k', k, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'Lax',
-      maxAge: 60 * 60 * 24 * 365,
-      path: '/',
-    });
-    return c.redirect('/');
-  }
-  return c.env.ASSETS.fetch(c.req.raw);
 });
 
 // ---- data helpers ----
@@ -200,11 +181,22 @@ app.get('/api/trends', async (c) => {
   const { results } = await db
     .prepare('SELECT * FROM checkins ORDER BY date DESC LIMIT 120')
     .all<Record<string, unknown> & { date: string }>();
+  const { results: doseRows } = await db
+    .prepare('SELECT date, COUNT(*) AS n FROM dose_log WHERE done = 1 GROUP BY date')
+    .all<{ date: string; n: number }>();
+  const doneByDate = new Map(doseRows.map((r) => [r.date, r.n]));
   const rows = results
     .sort((a, b) => (a.date < b.date ? -1 : 1))
     .map((r) => {
       const info = cycleInfo(r.date, starts, settings);
-      return { ...r, cycleDay: info?.day ?? null, phase: info?.phase ?? null };
+      const required = info ? dosesFor(r.date, info.phase).filter((d) => !d.optional).length : 0;
+      return {
+        ...r,
+        cycleDay: info?.day ?? null,
+        phase: info?.phase ?? null,
+        protocolRequired: required,
+        protocolDone: Math.min(doneByDate.get(r.date) ?? 0, required),
+      };
     });
   return c.json({ today, rows });
 });

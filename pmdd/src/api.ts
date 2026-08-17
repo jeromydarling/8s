@@ -24,12 +24,27 @@ export interface State {
 export interface TrendRow extends Checkin {
   cycleDay: number | null;
   phase: string | null;
+  protocolRequired: number;
+  protocolDone: number;
+}
+
+// The share link carries ?k=…; keep it in localStorage so the URL can stay
+// clean afterwards and every API call can present it as a header.
+const KEY_STORAGE = 'pmdd_k';
+
+export function accessKey(): string {
+  const fromUrl = new URLSearchParams(location.search).get('k');
+  if (fromUrl) {
+    localStorage.setItem(KEY_STORAGE, fromUrl);
+    history.replaceState(null, '', location.pathname);
+  }
+  return localStorage.getItem(KEY_STORAGE) ?? '';
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers: { 'Content-Type': 'application/json', 'X-Access-Key': accessKey() },
   });
   if (!res.ok) throw new Error(`${res.status}`);
   return res.json() as Promise<T>;

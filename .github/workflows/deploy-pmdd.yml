@@ -1,0 +1,37 @@
+name: Deploy PMDD tracker
+
+on:
+  push:
+    branches: [main]
+    paths: ['pmdd/**']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pmdd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: pmdd/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy
+      - name: Sync ACCESS_KEY secret (optional)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PMDD_ACCESS_KEY: ${{ secrets.PMDD_ACCESS_KEY }}
+        run: |
+          if [ -n "$PMDD_ACCESS_KEY" ]; then
+            printf '%s' "$PMDD_ACCESS_KEY" | npx wrangler secret put ACCESS_KEY
+          else
+            echo "PMDD_ACCESS_KEY not set — worker returns 503 until ACCESS_KEY exists"
+          fi

@@ -12,8 +12,7 @@
     {
       "binding": "DB",
       "database_name": "pmdd_db",
-      // Replace after `npm run db:create` prints the real id.
-      "database_id": "REPLACE_WITH_D1_ID"
+      "database_id": "ce0b12ed-6348-4d3f-964a-15c5ef8f85de"
     }
   ],
   "vars": {
