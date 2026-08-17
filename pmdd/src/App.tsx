@@ -127,6 +127,7 @@ function Home({ state, refresh }: { state: State; refresh: () => void }) {
 
   return (
     <>
+      {cycle && <div className={`phase-backdrop ${cycle.phase}`} aria-hidden="true" />}
       <header className="hero">
         <div className="hero-halo" aria-hidden="true" />
         <p className="hero-greeting">{partOfDay()} —</p>
