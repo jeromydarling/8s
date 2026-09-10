@@ -240,6 +240,33 @@ export async function me(c: Context<{ Bindings: Env }>): Promise<Response> {
     db.prepare("SELECT event_id, status FROM watchlist WHERE user_id = ?").bind(id).all(),
     db.prepare("SELECT * FROM alert_subs WHERE user_id = ?").bind(id).first(),
   ]);
+  // Association / onboarding fields (migration 0009). Guarded so /api/me keeps
+  // working if the code deploys before the migration is applied.
+  u.association_id = null;
+  u.association_name = null;
+  u.association_abbr = null;
+  u.is_association_admin = 0;
+  u.disciplines = "[]";
+  u.plan_source = null;
+  u.onboarded_at = null;
+  try {
+    const extra = (await db
+      .prepare("SELECT association_id, disciplines, plan_source, onboarded_at FROM users WHERE id = ?")
+      .bind(id)
+      .first()) as Record<string, unknown> | null;
+    if (extra) Object.assign(u, extra);
+    const [assoc, adm] = await Promise.all([
+      u.association_id
+        ? db.prepare("SELECT name, abbreviation FROM associations WHERE id = ?").bind(String(u.association_id)).first()
+        : Promise.resolve(null),
+      db.prepare("SELECT role FROM association_admins WHERE user_id = ? LIMIT 1").bind(id).first(),
+    ]);
+    u.association_name = (assoc as { name?: string } | null)?.name ?? null;
+    u.association_abbr = (assoc as { abbreviation?: string } | null)?.abbreviation ?? null;
+    u.is_association_admin = adm ? 1 : 0;
+  } catch {
+    /* pre-migration: association features simply appear absent */
+  }
   return c.json({
     user: u,
     contestants: contestants.results ?? [],

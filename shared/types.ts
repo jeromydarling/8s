@@ -79,6 +79,10 @@ export interface RodeoEvent {
   added: boolean; // is this family entered / watching
   lat: number;
   lng: number;
+  // Real-data trust signals (absent on bundled demo events).
+  verifiedAt?: string | null;
+  verifiedBy?: string | null; // association id | 'admin'
+  source?: string | null; // 'perplexity' (AI-estimated) | 'association' | 'manual' | 'seed'
 }
 
 export interface RunLog {

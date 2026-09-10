@@ -9,6 +9,8 @@ import { cn, Rowel, Wordmark } from "../components/ui";
 import { AuthModal } from "../marketing/AuthModal";
 import { TodayScreen, DrawScreen, BuckleScreen, TackScreen } from "./screens";
 import { MoreScreen, SponsorScreen, GatepostScreen, ImportScreen, BudgetScreen } from "./screens_more";
+import { OnboardingWizard } from "./Onboarding";
+import { AssociationPortal } from "./AssociationPortal";
 
 const TABS = [
   { to: "/app", label: "Today", icon: HomeIcon, end: true },
@@ -46,6 +48,7 @@ function Shell() {
         <TopBar />
         <BillingBanner />
         <VerifyBanner />
+        <OnboardingWizard />
         <main className="relative mx-auto w-full max-w-2xl flex-1 px-4 pb-28 pt-4 md:px-8 md:pb-12 md:pt-8">
           {loading && <LoadingState />}
           {error && <div className="rounded-2xl bg-rust/10 p-4 text-sm text-rust">Couldn't load the demo: {error}</div>}
@@ -68,6 +71,7 @@ function Shell() {
                   <Route path="/gatepost" element={<GatepostScreen />} />
                   <Route path="/import" element={<ImportScreen />} />
                   <Route path="/budget" element={<BudgetScreen />} />
+                  <Route path="/association" element={<AssociationPortal />} />
                   <Route path="*" element={<TodayScreen />} />
                 </Routes>
               </motion.div>

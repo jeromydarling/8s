@@ -120,7 +120,43 @@ export const adminApi = {
   leads: () => j<{ leads: Lead[] }>("/api/admin/crm/leads"),
   setLeadStage: (id: string, stage: string) =>
     j<{ ok: boolean }>(`/api/admin/crm/lead/${id}`, { method: "PATCH", body: JSON.stringify({ stage }) }),
+  // Data trust + associations
+  corrections: () => j<{ corrections: Correction[] }>("/api/admin/crm/corrections"),
+  reviewCorrection: (id: string, action: "approve" | "reject") =>
+    j<{ ok: boolean }>(`/api/admin/crm/correction/${id}`, { method: "POST", body: JSON.stringify({ action }) }),
+  associations: () => j<{ associations: AssocRow[] }>("/api/admin/crm/associations"),
+  provisionAssociation: (p: { name: string; abbreviation?: string; state?: string; owner_email?: string }) =>
+    j<{ ok: boolean; id: string; invite_code: string }>("/api/admin/crm/associations", { method: "POST", body: JSON.stringify(p) }),
 };
+
+export interface Correction {
+  id: string;
+  target_type: string;
+  target_id: string;
+  target_name: string | null;
+  field: string;
+  suggested_value: string | null;
+  current_value: string | null;
+  note: string | null;
+  submitter_email: string | null;
+  submitter_name: string | null;
+  created_at: string;
+}
+
+export interface AssocRow {
+  id: string;
+  name: string;
+  abbreviation: string | null;
+  state: string | null;
+  invite_code: string;
+  plan_status: string;
+  seat_limit: number;
+  verified: number;
+  families: number;
+  verified_events: number;
+  owner_email: string | null;
+  created_at: string;
+}
 
 export const LIFECYCLES = ["lead", "trial", "active", "at_risk", "churned", "won_back"] as const;
 export const LEAD_STAGES = ["new", "contacted", "qualified", "converted", "archived"] as const;

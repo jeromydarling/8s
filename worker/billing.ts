@@ -17,6 +17,7 @@ import type { Env } from "./index";
 import { currentUserId } from "./auth";
 import { stripe, stripeGet, StripeError, verifyStripeWebhook } from "./stripe";
 import { paidWelcomeEmail, paymentFailedEmail, sendMail, subCanceledEmail, subPausedEmail } from "./email";
+import { provisionAssociation } from "./association";
 
 // Look up a user's contact by id or Stripe customer, for lifecycle emails.
 async function contactBy(
@@ -130,18 +131,30 @@ export async function postCheckout(c: Context<{ Bindings: Env }>): Promise<Respo
         .run();
     }
 
+    // Association site-license: carry the org details so the webhook can
+    // provision the association (portal + invite code) on purchase.
+    const assocMeta: Record<string, string> = {};
+    if (plan === "associations") {
+      const an = String(body?.association_name ?? "").trim().slice(0, 120);
+      if (!an) return c.json({ error: "association_name_required", message: "Tell us the association's name." }, 422);
+      assocMeta["metadata[assoc_name]"] = an;
+      assocMeta["metadata[assoc_abbr]"] = String(body?.association_abbr ?? "").toUpperCase().slice(0, 12);
+      assocMeta["metadata[assoc_state]"] = String(body?.association_state ?? "").toUpperCase().slice(0, 2);
+    }
+
     const appUrl = `https://${c.env.APP_DOMAIN || "8s.rodeo"}`;
     const session = await stripe<{ url?: string }>(c.env, "checkout/sessions", {
       mode: "subscription",
       customer: customerId,
       "line_items[0][price]": priceId,
       "line_items[0][quantity]": "1",
-      success_url: `${appUrl}/app/more?upgrade=success`,
+      success_url: `${appUrl}/app/${plan === "associations" ? "association" : "more"}?upgrade=success`,
       cancel_url: `${appUrl}/app/more?upgrade=cancel`,
       "metadata[user_id]": u.id,
       "metadata[plan]": plan,
       "metadata[app_slug]": "8seconds",
       "metadata[satellite_app]": "8s",
+      ...assocMeta,
       // Mirror onto the subscription so customer.subscription.* events carry
       // the same metadata as the checkout session.
       "subscription_data[metadata][user_id]": u.id,
@@ -307,6 +320,20 @@ export async function postWebhook(c: Context<{ Bindings: Env }>): Promise<Respon
       if (type === "checkout.session.completed") {
         const u = await contactBy(db, { userId });
         if (u) email({ ...paidWelcomeEmail(u.name, PLANS[plan as PlanId].label), to: u.email });
+        // Site-license purchase → provision the association once (webhook retries are idempotent).
+        if (plan === "associations") {
+          const owns = await db.prepare("SELECT 1 FROM association_admins WHERE user_id = ? AND role = 'owner'").bind(userId).first();
+          if (!owns) {
+            await provisionAssociation(db, {
+              name: meta.assoc_name || `${u?.name || "Your"} Association`,
+              abbreviation: meta.assoc_abbr || null,
+              state: meta.assoc_state || null,
+              contactEmail: u?.email ?? null,
+              ownerUserId: userId,
+              stripeSubscriptionId: (obj.subscription as string | undefined) ?? null,
+            });
+          }
+        }
       }
     }
   } else if (type === "customer.subscription.deleted") {

@@ -29,7 +29,12 @@ import { adminNotifyEmail, notifyAdmins } from "./email";
 import {
   crmMe, crmCustomers, crmCustomer, crmMessage, crmTag, crmLifecycle, crmMap, crmMetrics,
   crmAtRisk, crmTasks, crmCreateTask, crmToggleTask, crmLeads, crmLeadStage,
+  crmCorrections, crmReviewCorrection, crmAssociations, crmProvisionAssociation,
 } from "./admin";
+import {
+  listAssociations, joinAssociation, myAssociation, saveOnboarding, submitCorrection,
+  portalOverview, portalVerifyEvent, portalCreateEvent, portalRotateCode, portalRemoveFamily, portalReviewCorrection,
+} from "./association";
 import * as Sentry from "@sentry/cloudflare";
 
 export interface Env {
@@ -256,6 +261,25 @@ app.post("/api/alerts/read", (c) => markAlertsRead(c));
 // ---- Gatepost petitions ----------------------------------------------------
 app.post("/api/gatepost/sign", (c) => signPetition(c));
 app.get("/api/gatepost/mine", (c) => myPetitions(c));
+
+// ---- Associations (site-license) + onboarding + data trust -----------------
+app.get("/api/associations", (c) => listAssociations(c));
+app.post("/api/association/join", (c) => joinAssociation(c));
+app.get("/api/association/mine", (c) => myAssociation(c));
+app.post("/api/onboarding", (c) => saveOnboarding(c));
+app.post("/api/data/correct", (c) => submitCorrection(c));
+// Association portal (association admins only)
+app.get("/api/association/portal", (c) => portalOverview(c));
+app.post("/api/association/portal/events", (c) => portalCreateEvent(c));
+app.post("/api/association/portal/event/:id", (c) => portalVerifyEvent(c));
+app.post("/api/association/portal/code", (c) => portalRotateCode(c));
+app.post("/api/association/portal/remove", (c) => portalRemoveFamily(c));
+app.post("/api/association/portal/correction/:id", (c) => portalReviewCorrection(c));
+// CRM: correction review queue + association provisioning (pilot path)
+app.get("/api/admin/crm/corrections", (c) => crmCorrections(c));
+app.post("/api/admin/crm/correction/:id", (c) => crmReviewCorrection(c));
+app.get("/api/admin/crm/associations", (c) => crmAssociations(c));
+app.post("/api/admin/crm/associations", (c) => crmProvisionAssociation(c));
 
 // ---- Supply side + analytics ----------------------------------------------
 app.post("/api/submit-event", (c) => submitEvent(c));

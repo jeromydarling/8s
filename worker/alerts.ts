@@ -15,6 +15,7 @@ interface EventRow {
   state: string;
   entry_deadline: string | null;
   disciplines: string | null;
+  verified_at?: string | null;
 }
 
 export async function runAlerts(env: Env): Promise<{ created: number; sent: number }> {
@@ -25,7 +26,9 @@ export async function runAlerts(env: Env): Promise<{ created: number; sent: numb
 
   const subs = await db.prepare("SELECT * FROM alert_subs").all();
   const events = (await db
-    .prepare("SELECT id,name,city,state,entry_deadline,disciplines FROM map_events WHERE entry_deadline IS NOT NULL")
+    // SELECT * so verified_at is present once migration 0009 lands, and absent
+    // (not an error) before it.
+    .prepare("SELECT * FROM map_events WHERE entry_deadline IS NOT NULL")
     .all()) as { results: EventRow[] };
 
   const today = new Date();
@@ -68,7 +71,12 @@ export async function runAlerts(env: Env): Promise<{ created: number; sent: numb
 
       const id = uid("al");
       const title = `Entry closing: ${e.name}`;
-      const body = `Entries for ${e.name} in ${e.city}, ${e.state} close ${e.entry_deadline} (${days} day${days === 1 ? "" : "s"}).`;
+      // A wrong deadline is the one mistake a rodeo family won't forgive — never
+      // present an AI-estimated date as fact.
+      const caveat = e.verified_at
+        ? ""
+        : " Heads up: this date is AI-estimated and not yet confirmed by the association — double-check before you count on it.";
+      const body = `Entries for ${e.name} in ${e.city}, ${e.state} close ${e.entry_deadline} (${days} day${days === 1 ? "" : "s"}).${caveat}`;
       await db
         .prepare(
           "INSERT INTO alerts (id,user_id,event_id,kind,title,body,due_date,created_at) VALUES (?,?,?,?,?,?,?,?)",

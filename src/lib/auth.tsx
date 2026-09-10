@@ -19,6 +19,14 @@ export interface User {
   plan_status?: string;
   plan_renews_at?: string;
   has_billing?: number;
+  // Association membership + onboarding (migration 0009)
+  association_id?: string | null;
+  association_name?: string | null;
+  association_abbr?: string | null;
+  is_association_admin?: number;
+  plan_source?: string | null; // 'self' | 'association'
+  disciplines?: string; // JSON array
+  onboarded_at?: string | null;
 }
 export interface Contestant {
   id: string;

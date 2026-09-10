@@ -25,6 +25,8 @@ export function MoreScreen() {
 
       <BillingPanel />
 
+      <AssociationCard />
+
       <AlertsPanel />
 
       <div className="mt-5">
@@ -82,6 +84,7 @@ function BillingPanel() {
   const [notice, setNotice] = useState<string>("");
   const [authOpen, setAuthOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [assocForm, setAssocForm] = useState({ open: false, name: "", abbr: "", state: "" });
   const pendingPlan = useRef<"family" | "pro" | "associations" | null>(null);
   const handledQuery = useRef(false);
 
@@ -122,10 +125,21 @@ function BillingPanel() {
   }
 
   async function startCheckout(plan: "family" | "pro" | "associations") {
+    // A site-license needs the association's details so the portal can be provisioned.
+    if (plan === "associations" && !assocForm.name.trim()) {
+      setAssocForm((f) => ({ ...f, open: true }));
+      setNotice("");
+      return;
+    }
     setBusy(plan);
     setNotice("");
     try {
-      const { url } = await api.checkout(plan);
+      const { url } = await api.checkout(
+        plan,
+        plan === "associations"
+          ? { association_name: assocForm.name.trim(), association_abbr: assocForm.abbr.trim(), association_state: assocForm.state.trim() }
+          : undefined,
+      );
       window.location.href = url;
     } catch (e) {
       setNotice(String((e as Error).message ?? e));
@@ -195,6 +209,43 @@ function BillingPanel() {
 
         {notice && <div className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-[12px] text-bone/90">{notice}</div>}
 
+        {assocForm.open && (
+          <div className="mt-3 space-y-2 rounded-2xl bg-white/10 p-3">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-gold">Association site license</div>
+            <div className="text-[11px] text-bone/70">
+              Every family who joins with your code gets the Family plan included — and you verify your own events. Tell us who you are:
+            </div>
+            <input
+              value={assocForm.name}
+              onChange={(e) => setAssocForm({ ...assocForm, name: e.target.value })}
+              placeholder="Association name *"
+              className="w-full rounded-xl border border-bone/20 bg-bone/10 px-3 py-2 text-sm text-bone outline-none placeholder:text-bone/40 focus:border-gold"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                value={assocForm.abbr}
+                onChange={(e) => setAssocForm({ ...assocForm, abbr: e.target.value.toUpperCase() })}
+                placeholder="Abbrev. (THSRA)"
+                className="rounded-xl border border-bone/20 bg-bone/10 px-3 py-2 text-sm text-bone outline-none placeholder:text-bone/40 focus:border-gold"
+              />
+              <input
+                value={assocForm.state}
+                onChange={(e) => setAssocForm({ ...assocForm, state: e.target.value.toUpperCase() })}
+                placeholder="State (TX)"
+                maxLength={2}
+                className="rounded-xl border border-bone/20 bg-bone/10 px-3 py-2 text-sm text-bone outline-none placeholder:text-bone/40 focus:border-gold"
+              />
+            </div>
+            <button
+              onClick={() => startCheckout("associations")}
+              disabled={!assocForm.name.trim() || !!busy}
+              className="w-full rounded-full bg-gold py-2.5 text-xs font-bold uppercase tracking-wider text-ink disabled:opacity-50"
+            >
+              {busy === "associations" ? "Starting…" : "Continue to checkout"}
+            </button>
+          </div>
+        )}
+
         {!enabled ? (
           <div className="mt-3 text-[12px] text-bone/65">Upgrades open soon — you're on the founding list.</div>
         ) : isPaid ? (
@@ -209,15 +260,21 @@ function BillingPanel() {
             ) : (
               <div className="space-y-2">
                 <div className="text-[11px] text-bone/70">
-                  Before you go — is one of these easier than canceling?
+                  Between seasons? The barn doesn't stop when the arena's quiet:
                 </div>
+                <ul className="space-y-0.5 text-[11px] text-bone/60">
+                  <li>✨ <span className="text-bone/85">Sponsor Pen</span> — renewal season is now; send the media kit.</li>
+                  <li>💵 <span className="text-bone/85">Budget</span> — plan next season's fees, hauling, and dues.</li>
+                  <li>🐴 <span className="text-bone/85">Tack Room</span> — farrier and vet reminders run year-round.</li>
+                </ul>
+                <div className="pt-1 text-[11px] text-bone/70">Still want a break? These are easier than canceling:</div>
                 <button
                   onClick={pause}
                   disabled={!!busy}
                   className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-left transition hover:bg-white/15 disabled:opacity-50"
                 >
                   <div className="text-sm font-bold text-bone">{busy === "pause" ? "Pausing…" : "Pause for 30 days"}</div>
-                  <div className="text-[11px] text-bone/60">Take a breather. No charges while paused; nothing's lost.</div>
+                  <div className="text-[11px] text-bone/60">No charges while paused. Your barn, entries, and reminders stay exactly as they are.</div>
                 </button>
                 <button
                   onClick={downgrade}
@@ -272,6 +329,73 @@ function BillingPanel() {
         intent="Create your account to upgrade"
       />
     </>
+  );
+}
+
+/* Association membership: admins get their portal, bundled members see who
+   covers them, everyone else can redeem an invite code. */
+function AssociationCard() {
+  const { user, refresh } = useAuth();
+  const [code, setCode] = useState(() => (new URLSearchParams(window.location.search).get("join") ?? "").toUpperCase());
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  if (!user) return null;
+
+  if (user.is_association_admin) {
+    return (
+      <Link to="/app/association">
+        <Card onClick={() => {}} className="mb-3 flex items-center gap-4 border-turq/30 bg-turq/[0.06]">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-turq/15 text-2xl">🏛️</span>
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-lg font-bold text-ink">Association Portal</div>
+            <div className="truncate text-xs text-ink/50">{user.association_name ?? "Your association"} · families, invite code, verify events</div>
+          </div>
+          <span className="text-ink/30">›</span>
+        </Card>
+      </Link>
+    );
+  }
+  if (user.association_id) {
+    return (
+      <Card className="mb-3 border-sage/30 bg-sage/[0.06]">
+        <div className="font-display font-bold text-ink">🏛️ {user.association_name ?? "Your association"}</div>
+        <div className="mt-1 text-xs text-ink/55">Your Family plan is included through your association. Nothing to pay — just ride.</div>
+      </Card>
+    );
+  }
+
+  async function join() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await api.joinAssociation(code.trim());
+      track("association_joined", { association: r.association.id });
+      setMsg(`Welcome — ${r.association.name} covers your Family plan.`);
+      await refresh();
+    } catch (e) {
+      setMsg(String((e as Error).message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mb-3">
+      <div className="font-display font-bold text-ink">Have an association code?</div>
+      <div className="mt-1 text-xs text-ink/55">Associations on 8 Seconds cover the Family plan for their members. Enter your code to unlock it.</div>
+      <div className="mt-3 flex gap-2">
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder="THSRA-AB12CD"
+          className="min-w-0 flex-1 rounded-xl border border-saddle/20 bg-white/70 px-3 py-2 text-sm uppercase outline-none focus:border-rust"
+        />
+        <button onClick={join} disabled={busy || !code.trim()} className="rounded-xl bg-rust px-4 py-2 text-xs font-bold uppercase tracking-wider text-bone disabled:opacity-40">
+          {busy ? "…" : "Join"}
+        </button>
+      </div>
+      {msg && <div className="mt-2 text-[12px] font-semibold text-sage-deep">{msg}</div>}
+    </Card>
   );
 }
 

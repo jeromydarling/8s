@@ -6,7 +6,7 @@ import { cn, Rowel, Wordmark } from "../components/ui";
 import { LazyRodeoMap } from "../components/LazyRodeoMap";
 import {
   adminApi, healthTone, lifecycleTone, LIFECYCLES, LEAD_STAGES, PLAN_LABEL,
-  type Customer, type CustomerDetail, type Lead, type Metrics, type Task,
+  type Customer, type CustomerDetail, type Lead, type Metrics, type Task, type Correction, type AssocRow,
 } from "./api";
 
 /* ---------- shared UI atoms ---------- */
@@ -88,6 +88,7 @@ const NAV = [
   { to: "/admin/map", label: "Map" },
   { to: "/admin/pipeline", label: "Pipeline" },
   { to: "/admin/tasks", label: "Tasks" },
+  { to: "/admin/partners", label: "Partners" },
 ];
 
 function Shell() {
@@ -133,6 +134,7 @@ function Shell() {
             <Route path="/map" element={<MapScreen />} />
             <Route path="/pipeline" element={<PipelineScreen />} />
             <Route path="/tasks" element={<TasksScreen />} />
+            <Route path="/partners" element={<PartnersScreen />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </main>
@@ -488,6 +490,97 @@ function TasksScreen() {
           </div>
         ))}
         {tasks.length === 0 && <div className="rounded-2xl bg-paper p-6 text-center text-xs text-ink/40">No tasks yet.</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ============================ PARTNERS (associations + data trust) ============================ */
+function PartnersScreen() {
+  const [corrections, setCorrections] = useState<Correction[]>([]);
+  const [assocs, setAssocs] = useState<AssocRow[]>([]);
+  const [form, setForm] = useState({ name: "", abbreviation: "", state: "", owner_email: "" });
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = () => {
+    adminApi.corrections().then((d) => setCorrections(d.corrections)).catch(() => {});
+    adminApi.associations().then((d) => setAssocs(d.associations)).catch(() => {});
+  };
+  useEffect(() => { load(); }, []);
+
+  async function review(id: string, action: "approve" | "reject") {
+    setCorrections((cs) => cs.filter((c) => c.id !== id));
+    await adminApi.reviewCorrection(id, action).catch(() => load());
+  }
+  async function provision() {
+    if (!form.name.trim()) return;
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await adminApi.provisionAssociation({ name: form.name.trim(), abbreviation: form.abbreviation.trim() || undefined, state: form.state.trim() || undefined, owner_email: form.owner_email.trim() || undefined });
+      setMsg(`Provisioned. Invite code: ${r.invite_code}`);
+      setForm({ name: "", abbreviation: "", state: "", owner_email: "" });
+      load();
+    } catch (e) {
+      setMsg(String((e as Error).message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const field = "rounded-xl border border-saddle/20 bg-white/70 px-3 py-2 text-sm outline-none focus:border-rust";
+  return (
+    <div>
+      <H eyebrow="Supply side" title="Partners & data trust" />
+
+      <Panel title={`Corrections to review (${corrections.length})`}>
+        {corrections.length === 0 && <div className="text-xs text-ink/40">Nothing pending. Families haven't flagged anything.</div>}
+        {corrections.map((c) => (
+          <div key={c.id} className="rounded-xl border border-gold/40 bg-gold/[0.06] p-3">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-ink/45">{c.target_type} · {c.target_name ?? c.target_id}</div>
+            <div className="mt-1 text-sm text-ink">
+              <span className="font-semibold">{c.field.replace(/_/g, " ")}</span>
+              {c.current_value != null && <span className="text-ink/45"> {c.current_value} →</span>}
+              {c.suggested_value && <span className="font-semibold text-sage-deep"> {c.suggested_value}</span>}
+            </div>
+            {c.note && <div className="mt-1 text-[12px] text-ink/60">"{c.note}"</div>}
+            <div className="mt-1 text-[10px] text-ink/40">from {c.submitter_name || c.submitter_email || "a family"} · {fmtDate(c.created_at)}</div>
+            <div className="mt-2 flex gap-2">
+              <button onClick={() => review(c.id, "approve")} className="rounded-full bg-sage px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-bone">Apply & verify</button>
+              <button onClick={() => review(c.id, "reject")} className="rounded-full bg-ink/8 px-3 py-1.5 text-[11px] font-semibold text-ink/60">Reject</button>
+            </div>
+          </div>
+        ))}
+      </Panel>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <Panel title="Provision a pilot association (free, no Stripe)">
+          <p className="text-[11px] text-ink/50">The first partner should never wait on a checkout. Their account must exist first; they become the owner + admin.</p>
+          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Association name *" className={cn(field, "w-full")} />
+          <div className="grid grid-cols-2 gap-2">
+            <input value={form.abbreviation} onChange={(e) => setForm({ ...form, abbreviation: e.target.value.toUpperCase() })} placeholder="Abbrev. (THSRA)" className={field} />
+            <input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value.toUpperCase() })} placeholder="State" maxLength={2} className={field} />
+          </div>
+          <input value={form.owner_email} onChange={(e) => setForm({ ...form, owner_email: e.target.value })} placeholder="Owner's account email" className={cn(field, "w-full")} />
+          <button onClick={provision} disabled={busy || !form.name.trim()} className="w-full rounded-full bg-rust py-2 text-xs font-bold uppercase tracking-wider text-bone disabled:opacity-50">{busy ? "…" : "Provision"}</button>
+          {msg && <div className="text-[12px] font-semibold text-sage-deep">{msg}</div>}
+        </Panel>
+
+        <Panel title={`Associations (${assocs.length})`}>
+          {assocs.length === 0 && <div className="text-xs text-ink/40">None yet — provision the first pilot on the left.</div>}
+          {assocs.map((a) => (
+            <div key={a.id} className="rounded-xl bg-paper/70 p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 truncate text-sm font-semibold text-ink">{a.name}{a.abbreviation ? ` (${a.abbreviation})` : ""}</div>
+                <Badge tone={a.plan_status === "active" ? "sage" : "ink"}>{a.plan_status}</Badge>
+              </div>
+              <div className="mt-0.5 text-[11px] text-ink/50">
+                {a.state ?? "—"} · {a.families}/{a.seat_limit} families · {a.verified_events} verified events · code <span className="font-mono">{a.invite_code}</span>
+              </div>
+              {a.owner_email && <div className="text-[10px] text-ink/40">owner {a.owner_email}</div>}
+            </div>
+          ))}
+        </Panel>
       </div>
     </div>
   );

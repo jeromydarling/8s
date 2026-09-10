@@ -331,9 +331,12 @@ export async function seedArenas(c: Context<{ Bindings: Env }>): Promise<Respons
 export async function listEvents(c: Context<{ Bindings: Env }>): Promise<Response> {
   if (!c.env.DB) return c.json({ events: null });
   try {
-    const { results } = await c.env.DB.prepare(
-      `SELECT * FROM map_events WHERE lat IS NOT NULL ORDER BY start_date LIMIT 200`,
-    ).all();
+    // Optional ?state=TX narrows to a family's home state so the 200-row cap
+    // never hides their local events behind other states'.
+    const state = (c.req.query("state") ?? "").toUpperCase().slice(0, 2);
+    const { results } = state
+      ? await c.env.DB.prepare(`SELECT * FROM map_events WHERE lat IS NOT NULL AND state = ? ORDER BY start_date LIMIT 200`).bind(state).all()
+      : await c.env.DB.prepare(`SELECT * FROM map_events WHERE lat IS NOT NULL ORDER BY start_date LIMIT 200`).all();
     if (!results || results.length === 0) return c.json({ events: null });
     return c.json({ events: results.map(rowToEvent) });
   } catch {
@@ -374,6 +377,10 @@ function rowToEvent(r: Record<string, unknown>) {
     lat: r.lat,
     lng: r.lng,
     sourceUrl: r.source_url,
+    // Trust signals: verified by an association/admin, or AI-estimated.
+    verifiedAt: r.verified_at ?? null,
+    verifiedBy: r.verified_by ?? null,
+    source: r.source ?? null,
   };
 }
 function safeArr(v: unknown): string[] {

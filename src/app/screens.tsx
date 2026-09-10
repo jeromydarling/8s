@@ -154,6 +154,8 @@ export function TodayScreen() {
 
       <CareRemindersCard />
 
+      <OffSeasonCard />
+
       <Card className="mb-4 bg-gradient-to-br from-leather to-ink text-bone">
         <div className="text-[11px] uppercase tracking-widest text-gold">{user ? "Sample season" : "This season together"}</div>
         <div className="mt-3 grid grid-cols-4 gap-2 text-center">
@@ -208,6 +210,174 @@ export function TodayScreen() {
   );
 }
 
+/* Between seasons: once a family has been active and nothing they follow is
+   coming up in the next 45 days, point them at the tools that matter in the
+   off-season instead of letting the app feel empty. */
+function OffSeasonCard() {
+  const { user, watchlist } = useAuth();
+  const [upcoming, setUpcoming] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!user || watchlist.length === 0) {
+      setUpcoming(null);
+      return;
+    }
+    let alive = true;
+    api.events(user.state || undefined).then((evs) => {
+      if (!alive) return;
+      const ids = new Set(watchlist.map((w) => w.event_id));
+      const from = Date.now() - 86400000;
+      const to = Date.now() + 45 * 86400000;
+      setUpcoming(
+        !!evs?.some((e) => {
+          const t = new Date(e.startDate).getTime();
+          return ids.has(e.id) && t >= from && t <= to;
+        }),
+      );
+    });
+    return () => {
+      alive = false;
+    };
+  }, [user?.id, user?.state, watchlist]);
+  if (!user || watchlist.length === 0 || upcoming !== false) return null;
+  const items = [
+    { to: "/app/sponsor", t: "Line up next season's sponsors", d: "Renewal conversations happen now — send the media kit.", emoji: "✨" },
+    { to: "/app/budget", t: "Plan next season's budget", d: "Entry fees, hauling, dues — set the number before the first draw.", emoji: "💵" },
+    { to: "/app/tack", t: "Keep the barn on schedule", d: "Farrier, vet, Coggins — reminders don't take the off-season off.", emoji: "🐴" },
+    { to: "/app/buckle", t: "Set next season's goals", d: "Which ladder, which finals — decide it while the arena's quiet.", emoji: "🏆" },
+  ];
+  return (
+    <div className="mb-4">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="font-display text-lg font-bold text-ink">Between seasons?</h2>
+        <span className="text-[11px] text-ink/40">the barn keeps working</span>
+      </div>
+      <Stagger>
+        {items.map((q) => (
+          <StaggerItem key={q.to}>
+            <Link to={q.to}>
+              <Card onClick={() => {}} className="flex items-center gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-paper text-xl">{q.emoji}</span>
+                <div className="min-w-0">
+                  <div className="font-display font-bold text-ink">{q.t}</div>
+                  <div className="text-xs text-ink/50">{q.d}</div>
+                </div>
+              </Card>
+            </Link>
+          </StaggerItem>
+        ))}
+      </Stagger>
+    </div>
+  );
+}
+
+/* Data trust: real events are either verified by the association / 8 Seconds
+   or AI-estimated from public listings. Never let the two look the same. */
+function TrustBadge({ e }: { e: RodeoEvent }) {
+  if (!e.source) return null;
+  return e.verifiedAt ? (
+    <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-sage/15 px-2 py-0.5 text-[10px] font-bold text-sage-deep">
+      ✓ Verified{e.verifiedBy && e.verifiedBy !== "admin" ? " by association" : ""}
+    </span>
+  ) : (
+    <span
+      className="mt-1 inline-flex items-center gap-1 rounded-full bg-gold/20 px-2 py-0.5 text-[10px] font-bold text-saddle"
+      title="Pulled from public listings by AI — confirm with the association before entering"
+    >
+      AI-estimated · confirm
+    </span>
+  );
+}
+
+const FIX_FIELDS: [string, string][] = [
+  ["entry_deadline", "Entry deadline"],
+  ["start_date", "Start date"],
+  ["end_date", "End date"],
+  ["venue", "Venue"],
+  ["city", "City"],
+  ["state", "State"],
+  ["fee_per_event", "Fee per event"],
+  ["name", "Event name"],
+  ["other", "Something else"],
+];
+
+/* "Suggest a fix" — any signed-in family can correct a field; the association
+   or an admin reviews and applies it. This is how the data gets honest. */
+function CorrectionModal({ ev, onClose }: { ev: RodeoEvent | null; onClose: () => void }) {
+  const [field, setField] = useState("entry_deadline");
+  const [value, setValue] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    setField("entry_deadline");
+    setValue("");
+    setNote("");
+    setDone(false);
+    setErr("");
+  }, [ev?.id]);
+  if (!ev) return null;
+  const isDate = field === "entry_deadline" || field.endsWith("_date");
+
+  async function submit() {
+    if (!ev) return;
+    setBusy(true);
+    setErr("");
+    try {
+      await api.correct({ target_type: "event", target_id: ev.id, field, suggested_value: value, note });
+      track("correction_submitted", { field, verified: !!ev.verifiedAt });
+      setDone(true);
+    } catch (e) {
+      setErr(String((e as Error).message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center p-4">
+      <div className="absolute inset-0 bg-ink/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-3xl bg-bone p-5 shadow-lift">
+        <div className="text-[11px] font-bold uppercase tracking-widest text-rust">Suggest a fix</div>
+        <h3 className="mt-1 font-display text-xl font-bold leading-tight text-ink">{ev.name}</h3>
+        <p className="mt-1 text-xs text-ink/55">
+          {ev.verifiedAt
+            ? "This event is verified — your note goes straight to the association."
+            : `This listing is AI-estimated. Your fix helps every family in ${ev.state}.`}
+        </p>
+        {done ? (
+          <div className="mt-4 rounded-2xl bg-sage/12 p-4 text-sm font-semibold text-sage-deep">✓ Thank you — we'll review it and update the event.</div>
+        ) : (
+          <div className="mt-4 space-y-2">
+            <select value={field} onChange={(e) => setField(e.target.value)} className={cn(inputSm, "w-full")}>
+              {FIX_FIELDS.map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
+            </select>
+            {field !== "other" && (
+              <input type={isDate ? "date" : "text"} value={value} onChange={(e) => setValue(e.target.value)} placeholder={isDate ? "" : "What it should be"} className={cn(inputSm, "w-full")} />
+            )}
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              placeholder="Anything else? A link to the association's flyer or entry form is gold."
+              className={cn(inputSm, "w-full resize-none")}
+            />
+            {err && <p className="text-xs font-semibold text-rust">{err}</p>}
+            <div className="flex gap-2">
+              <button onClick={submit} disabled={busy || (field !== "other" && !value && !note)} className="flex-1 rounded-full bg-rust py-2.5 text-xs font-bold uppercase tracking-wider text-bone disabled:opacity-50">
+                {busy ? "Sending…" : "Send fix"}
+              </button>
+              <button onClick={onClose} className="rounded-full bg-ink/8 px-4 py-2.5 text-xs font-semibold text-ink/60">Close</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ================= THE DRAW ================= */
 const FILTERS: Array<"All" | Discipline> = ["All", "Barrel Racing", "Breakaway Roping", "Tie-Down Roping", "Team Roping", "Goat Tying"];
 
@@ -231,14 +401,18 @@ export function DrawScreen() {
   const [view, setView] = useState<"list" | "map" | "plan">("list");
   const [selected, setSelected] = useState<string | null>(null);
   const [realEvents, setRealEvents] = useState<RodeoEvent[] | null>(null);
+  const [fixFor, setFixFor] = useState<RodeoEvent | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
 
+  // Signed-in families get their home state's real events (so the row cap
+  // never hides local rodeos behind other states'); guests get the full feed.
   useEffect(() => {
     let alive = true;
-    api.events().then((e) => alive && setRealEvents(e));
+    api.events(user?.state || undefined).then((e) => alive && setRealEvents(e));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [user?.state]);
 
   // Seed "added" from the signed-in user's saved watchlist.
   useEffect(() => {
@@ -255,7 +429,10 @@ export function DrawScreen() {
 
   if (!data) return null;
 
-  const events = data.events
+  // Real events (verified or AI-estimated) for signed-in families; the bundled
+  // demo season for guests so the preview always has something to show.
+  const usingReal = !!user && !!realEvents && realEvents.length > 0;
+  const events = (usingReal ? (realEvents as RodeoEvent[]) : data.events)
     .filter((e) => filter === "All" || e.disciplines.includes(filter as Discipline))
     .slice()
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -318,6 +495,13 @@ export function DrawScreen() {
       )}
 
       {view === "list" && (
+      <>
+      {usingReal && (
+        <div className="mb-2 text-[11px] text-ink/45">
+          Real events{user?.state ? ` in ${user.state}` : ""} · <span className="font-semibold text-sage-deep">✓ verified</span> vs{" "}
+          <span className="font-semibold text-saddle">AI-estimated</span> — see something off? Tap "Suggest a fix".
+        </div>
+      )}
       <Stagger>
         {events.map((e) => {
           const isAdded = added[e.id] ?? e.added;
@@ -333,6 +517,7 @@ export function DrawScreen() {
                     </div>
                     <h3 className="mt-1 font-display text-lg font-bold leading-tight text-ink">{e.name}</h3>
                     <div className="text-xs text-ink/50">{e.venue} · {e.city}, {e.state}</div>
+                    <TrustBadge e={e} />
                   </div>
                   <div className="text-right">
                     <div className="font-display text-xl font-bold text-rust">{fmtDate(e.startDate)}</div>
@@ -346,9 +531,19 @@ export function DrawScreen() {
                   {e.disciplines.length > 3 && <span className="text-[10px] text-ink/40">+{e.disciplines.length - 3}</span>}
                 </div>
                 <div className="mt-3 flex items-center justify-between border-t border-saddle/10 pt-3">
-                  <span className={cn("text-xs font-semibold", d <= 3 ? "text-rust" : "text-ink/55")}>
-                    {e.drawPosted ? "✓ Draw posted" : d >= 0 ? `Entry closes in ${d}d` : "Entry closed"}
-                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className={cn("text-xs font-semibold", d <= 3 ? "text-rust" : "text-ink/55")}>
+                      {e.drawPosted ? "✓ Draw posted" : d >= 0 ? `Entry closes in ${d}d` : "Entry closed"}
+                    </span>
+                    {e.source && (
+                      <button
+                        onClick={() => (user ? setFixFor(e) : setAuthOpen(true))}
+                        className="text-left text-[10px] font-semibold text-ink/40 underline-offset-2 hover:text-rust hover:underline"
+                      >
+                        Something off? Suggest a fix
+                      </button>
+                    )}
+                  </div>
                   <button
                     onClick={() => toggleEntry(e.id, isAdded)}
                     className={cn(
@@ -364,7 +559,10 @@ export function DrawScreen() {
           );
         })}
       </Stagger>
+      </>
       )}
+      <CorrectionModal ev={fixFor} onClose={() => setFixFor(null)} />
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onAuthed={() => setAuthOpen(false)} intent="Help keep the data honest" />
     </div>
   );
 }

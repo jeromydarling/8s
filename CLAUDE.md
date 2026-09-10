@@ -75,6 +75,29 @@ See `README.md` for full architecture, schema, API, and provisioning.
   Mapbox map of customers (home coords → state centroid fallback), a lead-inbox
   pipeline, and follow-up tasks. Backend in `worker/admin.ts`.
 
+## Associations (site-license) + data trust + onboarding
+
+- **Model:** an association buys the Associations plan (or is hand-provisioned as a
+  free pilot from the CRM → Partners tab) and gets an **Association Portal**
+  (`/app/association`, `worker/association.ts`): its families, a unique
+  **invite code**, and its own events to verify/edit/add. Any family that joins
+  with the code gets the **Family plan bundled** (`users.plan_source='association'`,
+  never downgrades a self-paid Pro). Stripe checkout for `plan=associations`
+  requires `association_name` and provisions the association in the webhook.
+- **Data trust:** `map_events`/`map_arenas` carry `verified_at`/`verified_by`
+  (association id or `'admin'`); `source='perplexity'` + no stamp = **AI-estimated**.
+  The Draw shows a Verified / AI-estimated badge on every real event, and deadline
+  alert emails carry a caveat when the date is unverified. Any signed-in family can
+  **Suggest a fix** (`data_corrections`, `POST /api/data/correct`); admins review in
+  CRM → Partners, associations review their own in the portal.
+- **Onboarding:** post-signup wizard (`src/app/Onboarding.tsx`) — home state,
+  disciplines, association/invite code, then a free-text "who's in the barn" that
+  the Import AI parses into riders + horses. `users.onboarded_at` gates it.
+  Signed-in families see real events for their state (`/api/events?state=XX`).
+- **Migration `0009_associations_verification.sql`** must be applied to remote D1
+  for these features. `/api/me` is guarded so sign-in still works pre-migration;
+  the new endpoints 500 until it's applied.
+
 ## Crons
 
 - Daily `0 13 * * *` — deadline alerts (`worker/alerts.ts`, branded email) +

@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { Env } from "./index";
 import { currentUserId } from "./auth";
 import { brandedEmail, sendMail } from "./email";
+import { applyCorrection, provisionAssociation } from "./association";
 
 // Super-admin CRM API. Every route is gated by `adminGate` — the signed-in
 // user's email must be in the ADMIN_EMAILS allowlist (comma-separated Worker
@@ -303,6 +304,93 @@ export async function crmToggleTask(c: Context<{ Bindings: Env }>): Promise<Resp
   if (!row) return c.json({ error: "not found" }, 404);
   await g.db.prepare("UPDATE admin_tasks SET done_at = ? WHERE id = ?").bind(row.done_at ? null : now(), id).run();
   return c.json({ ok: true });
+}
+
+/* ---------------- Data trust: correction review queue ---------------- */
+// GET /api/admin/crm/corrections — pending crowd corrections with context.
+export async function crmCorrections(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const g = await adminGate(c);
+  if (g instanceof Response) return g;
+  const { results } = await g.db
+    .prepare(
+      `SELECT d.*, u.email AS submitter_email, u.name AS submitter_name,
+              COALESCE(e.name, a.name) AS target_name,
+              CASE WHEN d.field != 'other' AND d.target_type = 'event' THEN
+                CASE d.field
+                  WHEN 'entry_deadline' THEN e.entry_deadline WHEN 'start_date' THEN e.start_date WHEN 'end_date' THEN e.end_date
+                  WHEN 'venue' THEN e.venue WHEN 'city' THEN e.city WHEN 'state' THEN e.state WHEN 'name' THEN e.name
+                  WHEN 'fee_per_event' THEN CAST(e.fee_per_event AS TEXT) WHEN 'status' THEN e.status END
+              END AS current_value
+         FROM data_corrections d
+         LEFT JOIN users u ON u.id = d.submitted_by
+         LEFT JOIN map_events e ON d.target_type = 'event' AND e.id = d.target_id
+         LEFT JOIN map_arenas a ON d.target_type = 'arena' AND a.id = d.target_id
+        WHERE d.status = 'pending'
+        ORDER BY d.created_at DESC LIMIT 200`,
+    )
+    .all();
+  return c.json({ corrections: results ?? [] });
+}
+
+// POST /api/admin/crm/correction/:id { action: "approve" | "reject" }
+export async function crmReviewCorrection(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const g = await adminGate(c);
+  if (g instanceof Response) return g;
+  const id = c.req.param("id") ?? "";
+  const b = (await c.req.json().catch(() => ({}))) as { action?: string };
+  if (b.action === "approve") {
+    const ok = await applyCorrection(g.db, id, "admin");
+    return ok ? c.json({ ok: true }) : c.json({ error: "not found" }, 404);
+  }
+  await g.db
+    .prepare("UPDATE data_corrections SET status = 'rejected', reviewed_by = ?, reviewed_at = ? WHERE id = ? AND status = 'pending'")
+    .bind(g.email, now(), id)
+    .run();
+  return c.json({ ok: true });
+}
+
+/* ---------------- Associations (site-license customers) ---------------- */
+// GET /api/admin/crm/associations — every association with seat usage.
+export async function crmAssociations(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const g = await adminGate(c);
+  if (g instanceof Response) return g;
+  const { results } = await g.db
+    .prepare(
+      `SELECT a.*, (SELECT COUNT(*) FROM users u WHERE u.association_id = a.id) AS families,
+              (SELECT COUNT(*) FROM map_events e WHERE e.verified_by = a.id) AS verified_events,
+              o.email AS owner_email
+         FROM associations a LEFT JOIN users o ON o.id = a.owner_user_id
+        ORDER BY a.created_at DESC LIMIT 200`,
+    )
+    .all();
+  return c.json({ associations: results ?? [] });
+}
+
+// POST /api/admin/crm/associations { name, abbreviation?, state?, owner_email }
+// The pilot path: hand-provision a real association for free (no Stripe) so the
+// first partner can be onboarded before there's traction to sell against.
+export async function crmProvisionAssociation(c: Context<{ Bindings: Env }>): Promise<Response> {
+  const g = await adminGate(c);
+  if (g instanceof Response) return g;
+  const b = (await c.req.json().catch(() => ({}))) as Record<string, string>;
+  const name = String(b.name ?? "").trim().slice(0, 120);
+  const ownerEmail = String(b.owner_email ?? "").trim().toLowerCase();
+  if (!name) return c.json({ error: "Association name is required." }, 422);
+  let ownerId: string | null = null;
+  if (ownerEmail) {
+    const o = (await g.db.prepare("SELECT id FROM users WHERE email = ?").bind(ownerEmail).first()) as { id: string } | null;
+    if (!o) return c.json({ error: "No account with that email yet — have them sign up first, then provision." }, 404);
+    ownerId = o.id;
+  }
+  const r = await provisionAssociation(g.db, {
+    name,
+    abbreviation: b.abbreviation || null,
+    state: b.state || null,
+    contactEmail: ownerEmail || null,
+    ownerUserId: ownerId,
+    verified: true, // admin-provisioned = a real association we've talked to
+  });
+  return c.json({ ok: true, ...r });
 }
 
 // GET /api/admin/crm/leads — lead inbox  ·  PATCH /lead/:id sets stage
