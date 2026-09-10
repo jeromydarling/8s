@@ -58,23 +58,29 @@ export function OnboardingWizard() {
       const r = await api.onboarding(skip ? {} : { state, disciplines: disc, code: code.trim() || undefined });
       setResult((x) => ({ ...x, joined: r.joined?.name ?? null, joinError: r.joinError }));
       track(skip ? "onboarding_skipped" : "onboarding_done", { disciplines: disc.length, joined: !!r.joined });
-      if (skip) {
-        try {
-          localStorage.setItem(SKIP_KEY, "1");
-        } catch {
-          /* ignore */
-        }
-        await refresh();
-        setOpen(false);
+    } catch (e) {
+      // Skipping must ALWAYS close the overlay — even if the API is down or
+      // the migration hasn't landed yet — or a new family is trapped behind it.
+      if (!skip) {
+        setErr(String((e as Error).message ?? e));
+        setBusy(false);
         return;
       }
-      setStep(3);
-      await refresh();
-    } catch (e) {
-      setErr(String((e as Error).message ?? e));
-    } finally {
-      setBusy(false);
     }
+    if (skip) {
+      try {
+        localStorage.setItem(SKIP_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+      await refresh().catch(() => {});
+      setOpen(false);
+      setBusy(false);
+      return;
+    }
+    setStep(3);
+    await refresh().catch(() => {});
+    setBusy(false);
   }
 
   async function parse() {

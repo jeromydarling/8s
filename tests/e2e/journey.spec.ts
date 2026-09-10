@@ -46,6 +46,11 @@ test("2. sign up as a brand-new user", async () => {
   await page.getByRole("button", { name: /create account/i }).click();
   // Signed in: account chip shows the initial; the "Sign in" button is gone.
   await expect(page.getByRole("button", { name: /^sign in$/i })).toHaveCount(0, { timeout: 15000 });
+  // A brand-new account gets the onboarding wizard (full-screen overlay). The
+  // journey exercises every screen directly, so dismiss it here; skip is
+  // resilient and closes even before migration 0009 lands.
+  await page.getByRole("button", { name: /skip for now/i }).click({ timeout: 8000 }).catch(() => {});
+  await expect(page.getByRole("button", { name: /skip for now/i })).toHaveCount(0, { timeout: 8000 }).catch(() => {});
 });
 
 test("3. Draw — list, filter, enter an event (persists)", async () => {
